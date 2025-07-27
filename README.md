@@ -19,3 +19,9 @@
 - [ ] shell
 - [x] exit
 - [x] inline-execute
+
+## 免杀性
+
+至于免杀性，我也不想去测，但我相信，由于是重构的，在一定时间段内，过常见杀软是没问题的。本机带的Windows Defender。
+
+![image-20250727220705667](README.assets/image-20250727220705667.png)

@@ -133,6 +133,7 @@ void CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
 				if (!hModule) {
 					LoadLibraryA(lpModuleName);
 				}
+				hModule = GetModuleHandleA(lpModuleName);
 				PROC lpFuncAddre = GetProcAddress(hModule, lpFuncName);
 				if (!lpFuncAddre)
 				{

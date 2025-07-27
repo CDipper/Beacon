@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -172,8 +172,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Api.h" />
+    <ClInclude Include="Bof.h" />
     <ClInclude Include="Command.h" />
     <ClInclude Include="Config.h" />
+    <ClInclude Include="error.h" />
     <ClInclude Include="Http.h" />
     <ClInclude Include="Job.h" />
     <ClInclude Include="MetaData.h" />
