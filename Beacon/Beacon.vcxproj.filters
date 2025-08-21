@@ -71,5 +71,11 @@
     <ClInclude Include="Api.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Bof.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="error.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

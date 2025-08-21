@@ -199,10 +199,6 @@ BeaconJob* initialize_Beacon_Job(HANDLE hProcess, HANDLE hThread, int dwProcessI
     return pBeaconJob;
 }
 
-
-// <summary>
-/// 对beacon jos进行清理,删除停止状态的任务
-/// </summary>
 void del_beacon_job()
 {
     BeaconJob* pgBeaconJob = gBeaconJob;

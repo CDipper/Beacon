@@ -31,22 +31,23 @@ typedef struct {
     char JobName[64];
 }BeaconJob;
 
-void CmdChangSleepTimes(unsigned char* CommandBuf);
-void CmdPs(char* Taskdata, int Task_size);
-void CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen);
-unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t* lenn);
-unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_t* lenn, int chunkNumber);
-unsigned char* CmdDrives(unsigned char* commandBuf, size_t* Bufflen);
-unsigned char* CmdMkdir(unsigned char* cmdBuf, size_t* commandBuflen, size_t* Bufflen);
-unsigned char* CmdFileRemove(unsigned char* cmdBuf, size_t* commandBuflen, size_t* Bufflen);
-unsigned char* CmdFileDownload(unsigned char* buf, size_t* commandBuflen, size_t* Bufflen);
-unsigned char* CmdShell(unsigned char* commandBuf, size_t* commandBuflen, size_t* Bufflen);
-unsigned char* CmdPwd(unsigned char* commandBuf, size_t* Bufflen);
-unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* Bufflen);
-unsigned char* MakePacket(int callback, unsigned char* buff, size_t lenn, size_t* buflen);
-VOID DataProcess(unsigned char* buf, size_t lenn, int callback);
+VOID CmdChangSleepTimes(unsigned char* CommandBuf);
+VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen);
+VOID CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen);
+unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t* msgLen);
+unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen, int chunkNumber);
+unsigned char* CmdDrives(unsigned char* commandBuf, size_t* msgLen);
+unsigned char* CmdMkdir(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
+unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
+unsigned char* CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
+VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen);
+unsigned char* CmdPwd(unsigned char* commandBuf, size_t* msgLen);
+unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* msgLen);
+wchar_t* makeMetaData();
+unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, size_t* buflen);
+VOID DataProcess(unsigned char* postMsg, size_t msgLen, int callbackType);
 
-void PipeJob(unsigned char* buf, size_t* commandBuflen, size_t* Bufflen);
+void PipeJob(unsigned char* buf, size_t* commandBuflen, size_t* msgLen);
 void CheckTimeout(HANDLE hNamedPipe, int timeout);
 
 

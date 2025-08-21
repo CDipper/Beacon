@@ -16,12 +16,25 @@
 - [x] ps
 - [x] rm
 - [x] download
-- [ ] shell
+- [x] shell
 - [x] exit
 - [x] inline-execute
+- [ ] screenshot
+- [ ] keylogger
+- [ ] dllinject
 
-## 免杀性
+## Bug
 
-至于免杀性，我也不想去测，但我相信，由于是重构的，在一定时间段内，过常见杀软是没问题的。本机带的Windows Defender。
+开发过程中测试发现的Bug：
 
-![image-20250727220705667](README.assets/image-20250727220705667.png)
+- [x] drivers命令崩溃
+- [ ] upload上传大文件时，AES解密出错，解密数据不为16的倍数
+- [ ] upload上传大文件时，崩溃
+- [x] shell执行calc时崩溃
+
+## ToDo
+
+- [x] 不使用buff_init、buffer_append、buffer_free
+- [ ] 重写ps命令
+- [ ] 对于一些交互式shell命令（time），造成命令等待输入阻塞问题
+

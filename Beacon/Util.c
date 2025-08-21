@@ -56,7 +56,6 @@ unsigned char* RandomAESKey(unsigned char* aesKey, size_t keyLength) {
     return aesKey;
 }
 
-//生成随机数字
 unsigned int GenerateRandomInt(int min, int max) {
     // 使用当前时间作为随机数种子
     srand((unsigned int)time(NULL)); 
@@ -75,6 +74,7 @@ unsigned int GenerateRandomInt(int min, int max) {
 uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays) {
     size_t totalSize = 0;
 
+    // 计算总大小
     for (size_t i = 0; i < numArrays; ++i) {
         totalSize += sizes[i];
     }
@@ -82,11 +82,13 @@ uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays) {
     uint8_t* result = (uint8_t*)malloc(totalSize); 
 
     if (result == NULL) {
+		fprintf(stderr, "Memory allocation failed for result\n");
         return NULL;
     }
 
     size_t offset = 0;
 
+    // 整合数据
     for (size_t i = 0; i < numArrays; ++i) {
         memcpy(result + offset, arrays[i], sizes[i]);
         offset += sizes[i];
@@ -94,8 +96,6 @@ uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays) {
 
     return result;
 }
-
-
 
 unsigned char* base64Encode(unsigned char* data, size_t data_length) {
     if (data == NULL || data_length == 0) {
@@ -111,7 +111,7 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
     }
 
     // 分配内存（包含结尾空字符）
-    char* encodedData = (unsigned char*)malloc(encodedLength);
+    unsigned char* encodedData = (unsigned char*)malloc(encodedLength);
     if (!encodedData) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
@@ -132,8 +132,9 @@ unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned c
         return NULL;
     }
 
-    unsigned char* result = (unsigned char*)malloc(2 * data_length * sizeof(unsigned char));
+    unsigned char* result = (unsigned char*)malloc(2 * data_length + 1);
     if (result == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
@@ -150,6 +151,7 @@ unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned c
         result[(*encoded_length)++] = buf[1];
     }
 
+	free(data);
     return result;
 }
 
@@ -171,12 +173,14 @@ void XOR(unsigned char* data, unsigned char* key, size_t data_length) {
 }
 
 unsigned char* MaskEncode(unsigned char* data, size_t data_length , size_t* mask_length) {
-    unsigned char* result = (unsigned char*)malloc((data_length + 4) * sizeof(unsigned char*));
+    // 前四个字节放密钥
+    unsigned char* result = (unsigned char*)malloc(data_length + 4 + 1);
     if (result == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    // 生成随机数
+    // 生成四个随机数作为 XOR 密钥
     unsigned char key[4];
     for (int i = 0; i < 4; ++i) {
         key[i] = rand() & 0xFF; 
@@ -290,7 +294,7 @@ unsigned char* AesCBCEncrypt(unsigned char* rawData, unsigned char* key, size_t 
 
     // 分配加密缓冲区（加上前置 16 字节 ADD）
     size_t cipherTextLen = cbCipherText + 16;
-    unsigned char* cipherText = (unsigned char*)malloc(cipherTextLen + 1); // +1 for '\0'
+    unsigned char* cipherText = (unsigned char*)malloc(cipherTextLen + 1);
     if (cipherText == NULL) {
         fprintf(stderr, "Memory Allocatiuon Failed\n\n");
         free(paddedData);
@@ -398,9 +402,14 @@ unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, siz
     }
 
     // 执行解密
-    status = BCryptDecrypt(hKey, encryptData, dataLen, NULL, IVA, 16, decryptData, dataLen, &cbDecrypted, 0);
+    status = BCryptDecrypt(hKey, encryptData, (ULONG)dataLen, NULL, IVA, 16, decryptData, dataLen, &cbDecrypted, 0);
     if (!BCRYPT_SUCCESS(status)) {
         fprintf(stderr, "BCryptDecrypt failed: %08x\n", status);
+        ULONG blockSize;
+        if (BCRYPT_SUCCESS(BCryptGetProperty(hAlg, BCRYPT_BLOCK_LENGTH,
+            (PUCHAR)&blockSize, sizeof(blockSize), &cbData, 0))) {
+            fprintf(stderr, "Block size: %lu, Data length: %zu\n", blockSize, dataLen);
+        }
         free(decryptData);
         BCryptDestroyKey(hKey);
         free(pbKeyObject);
@@ -419,45 +428,7 @@ unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, siz
     return decryptData;
 }
 
-// 字符集转换
-unsigned char* CodepageToUTF8(unsigned char* input, size_t inputLen, size_t* outputLen) {
-    int utf8Len = MultiByteToWideChar(CP_ACP, 0, (LPCSTR)input, inputLen, NULL, 0);
-    if (utf8Len == 0) {
-        fprintf(stderr, "Error in MultiByteToWideChar: %d\n", GetLastError());
-        return NULL;
-    }
-
-    wchar_t* utf16Buffer = (wchar_t*)malloc((utf8Len + 1) * sizeof(wchar_t));
-    if (utf16Buffer == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
-        return NULL;
-    }
-
-    MultiByteToWideChar(CP_ACP, 0, (LPCSTR)input, inputLen, utf16Buffer, utf8Len);
-
-    int utf8OutputLen = WideCharToMultiByte(CP_UTF8, 0, utf16Buffer, utf8Len, NULL, 0, NULL, NULL);
-    if (utf8OutputLen == 0) {
-        fprintf(stderr, "Error in WideCharToMultiByte: %d\n", GetLastError());
-        free(utf16Buffer);
-        return NULL;
-    }
-
-    unsigned char* utf8Buffer = (unsigned char*)malloc(utf8OutputLen + 1);
-    if (utf8Buffer == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
-        free(utf16Buffer);
-        return NULL;
-    }
-
-    WideCharToMultiByte(CP_UTF8, 0, utf16Buffer, utf8Len, (LPSTR)utf8Buffer, utf8OutputLen, NULL, NULL);
-    utf8Buffer[utf8OutputLen] = '\0';
-
-    free(utf16Buffer);
-    *outputLen = utf8OutputLen;
-    return utf8Buffer;
-}
-
-unsigned char* HMkey(const unsigned char* encryptedBytes, size_t encryptedBytesLen) {
+unsigned char* HMkey(unsigned char* encryptedBytes, size_t encryptedBytesLen) {
     BCRYPT_ALG_HANDLE hAlg = NULL;
     BCRYPT_HASH_HANDLE hHash = NULL;
     NTSTATUS status;
@@ -553,6 +524,7 @@ unsigned char* HMkey(const unsigned char* encryptedBytes, size_t encryptedBytesL
     }
 
     memcpy(hmacResult, hmac_result, 16);
+
     free(hmac_result);
 
     return hmacResult;

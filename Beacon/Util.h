@@ -26,11 +26,11 @@ unsigned char* MaskEncode(unsigned char* data, size_t data_length, size_t* mask_
 unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, size_t dataLen, size_t* decryptAES_CBCdatalen);
 unsigned char* AesCBCEncrypt(unsigned char* data, unsigned char* key, size_t dataLen, size_t* encryptedDataLen);
 uint32_t bigEndianUint32(uint8_t b[4]);
-unsigned char* CodepageToUTF8(unsigned char* input, size_t inputLen, size_t* outputLen);
 unsigned char* HMkey( unsigned char* encryptedBytes, size_t encryptedBytesLen);
 unsigned char* str_replace_all(unsigned char* str, unsigned char* find, unsigned char* replace);
 uint16_t Readshort(uint8_t* b);
 BOOL SHA256_Hash(unsigned char* input, DWORD inputLength, unsigned char* output);
+
 
 #define HMAC_KEY_LENGTH 16  // HMAC KeyµÄ³¤¶È
 extern unsigned char Hmackey[16];

