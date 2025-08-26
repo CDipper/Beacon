@@ -31,7 +31,7 @@ typedef struct {
     char JobName[64];
 }BeaconJob;
 
-VOID CmdChangSleepTimes(unsigned char* CommandBuf);
+VOID CmdChangSleepTimes(unsigned char* commandBuf);
 VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen);
 VOID CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen);
 unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t* msgLen);
@@ -39,7 +39,7 @@ unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_
 unsigned char* CmdDrives(unsigned char* commandBuf, size_t* msgLen);
 unsigned char* CmdMkdir(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
 unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
-unsigned char* CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
+VOID CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
 VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen);
 unsigned char* CmdPwd(unsigned char* commandBuf, size_t* msgLen);
 unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* msgLen);

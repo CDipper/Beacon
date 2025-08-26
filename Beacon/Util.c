@@ -29,31 +29,17 @@ void PutUint16BigEndian(uint8_t* bytes, uint16_t value) {
     bytes[1] = value & 0xFF;
 }
 
-unsigned char* RandomAESKey(unsigned char* aesKey, size_t keyLength) {
-    // 确保传入的 aesKey 指针有效
-    if (aesKey == NULL || keyLength == 0) {
-        return NULL;
-    }
+BOOL RandomAESKey(unsigned char* aesKey, size_t keyLength) {
+    if (!aesKey || keyLength == 0) return FALSE;
 
-    // 初始化 BCrypt
     BCRYPT_ALG_HANDLE hAlg = NULL;
-    NTSTATUS status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RNG_ALGORITHM, NULL, 0);
-    if (!BCRYPT_SUCCESS(status)) {
-        fprintf(stderr, "BCryptOpenAlgorithmProvider failed: %08x\n", status);
-        return NULL;
+    if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RNG_ALGORITHM, NULL, 0))) {
+        return FALSE;
     }
 
-    // 生成随机字节
-    status = BCryptGenRandom(hAlg, aesKey, (ULONG)keyLength, 0);
-    if (!BCRYPT_SUCCESS(status)) {
-        fprintf(stderr, "BCryptGenRandom failed: %08x\n", status);
-        BCryptCloseAlgorithmProvider(hAlg, 0);
-        return NULL;
-    }
-
-    // 清理
+    BOOL ok = BCRYPT_SUCCESS(BCryptGenRandom(hAlg, aesKey, (ULONG)keyLength, 0));
     BCryptCloseAlgorithmProvider(hAlg, 0);
-    return aesKey;
+    return ok;
 }
 
 unsigned int GenerateRandomInt(int min, int max) {
@@ -79,10 +65,11 @@ uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays) {
         totalSize += sizes[i];
     }
 
+	// 多分配一个字节用于结尾的 '\0'
     uint8_t* result = (uint8_t*)malloc(totalSize); 
 
     if (result == NULL) {
-		fprintf(stderr, "Memory allocation failed for result\n");
+		fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
@@ -132,7 +119,7 @@ unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned c
         return NULL;
     }
 
-    unsigned char* result = (unsigned char*)malloc(2 * data_length + 1);
+    unsigned char* result = (unsigned char*)malloc(2 * data_length);
     if (result == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
@@ -151,11 +138,10 @@ unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned c
         result[(*encoded_length)++] = buf[1];
     }
 
-	free(data);
     return result;
 }
 
-unsigned char* NetbiosDecode(unsigned char* data, int data_length, unsigned char key ,size_t* NetbiosDecodelen) {
+unsigned char* NetbiosDecode(unsigned char* data, size_t data_length, unsigned char key ,size_t* NetbiosDecodelen) {
 
     for (int i = 0; i < data_length; i += 2) {
         data[i / 2] = ((data[i] - key) << 4) + ((data[i + 1] - key) & 0xf);
@@ -172,29 +158,27 @@ void XOR(unsigned char* data, unsigned char* key, size_t data_length) {
     }
 }
 
-unsigned char* MaskEncode(unsigned char* data, size_t data_length , size_t* mask_length) {
-    // 前四个字节放密钥
-    unsigned char* result = (unsigned char*)malloc(data_length + 4 + 1);
-    if (result == NULL) {
+unsigned char* MaskEncode(unsigned char* data, size_t data_length, size_t* mask_length) {
+    if (!data || data_length == 0) return NULL;
+
+    unsigned char* result = (unsigned char*)malloc(data_length + 4);
+    if (!result) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    // 生成四个随机数作为 XOR 密钥
     unsigned char key[4];
     for (int i = 0; i < 4; ++i) {
-        key[i] = rand() & 0xFF; 
+        key[i] = rand() & 0xFF;
     }
 
     memcpy(result, key, 4);
 
-    XOR(data, key, data_length);
-
-    memcpy(result + 4, data, data_length);
-    result[data_length + 4] = '\0';
+    for (size_t i = 0; i < data_length; ++i) {
+        result[i + 4] = data[i] ^ key[i % 4];
+    }
 
     *mask_length = data_length + 4;
-
     return result;
 }
 
@@ -211,7 +195,7 @@ unsigned char* PaddingWithA(unsigned char* rawData, size_t len, size_t* paddedDa
     size_t padSize = step - pad;
     unsigned char* padBuffer = malloc(len + padSize + 1); 
     if (padBuffer == NULL) {
-        fprintf(stderr, "Memory Allocatiuon Failed\n");
+        fprintf(stderr, "Memory allocatiuon failed\n");
         return NULL;
     }
     memcpy(padBuffer, rawData, len);
@@ -582,7 +566,7 @@ BOOL SHA256_Hash(unsigned char* input, DWORD inputLength, unsigned char* output)
     DWORD hashLength = 0, resultLength = 0;
 
     // 检查输入参数
-    if (input == NULL || output == NULL) {
+    if (input == NULL) {
         return FALSE;
     }
 
