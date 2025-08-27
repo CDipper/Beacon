@@ -86,13 +86,16 @@ unsigned char* parsePacket(unsigned char* decryptedBuf, uint32_t* totalLength, u
 
 	// 没有足够的 commandBuf
     if(*totalLength < (8 + commandLen)) {
+        fprintf(stderr, "Not Enough CommandBuf\n");
         return NULL;
 	}
 
-    unsigned char* commandBuf = (unsigned char*)malloc(commandLen);
+    // 多分配一个放 '\0'
+    unsigned char* commandBuf = (unsigned char*)malloc(commandLen + 1);
     if (commandBuf) {
         unsigned char* commandBufStart = decryptedBuffer + 8;
         memcpy(commandBuf, commandBufStart, commandLen);
+        commandBuf[commandLen] = "\0";
     }
 
     // 留下剩下的数据包长度

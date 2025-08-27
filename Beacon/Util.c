@@ -85,33 +85,43 @@ uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays) {
 }
 
 unsigned char* base64Encode(unsigned char* data, size_t data_length) {
-    if (data == NULL || data_length == 0) {
+    if (!data || data_length == 0) {
         fprintf(stderr, "Invalid input data or length\n");
         return NULL;
     }
 
-    // 计算 Base64 编码后的长度
     DWORD encodedLength = 0;
-    if (!CryptBinaryToStringA(data, data_length, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &encodedLength)) {
-        fprintf(stderr, "CryptBinaryToStringA (size calc) failed: %lu\n", GetLastError());
+    if (!CryptBinaryToStringA(
+        data,
+        (DWORD)data_length,
+        CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+        NULL,
+        &encodedLength))
+    {
+        fprintf(stderr, "CryptBinaryToStringA (size calc) Failed With Error: %lu\n", GetLastError());
         return NULL;
     }
 
-    // 分配内存（包含结尾空字符）
-    unsigned char* encodedData = (unsigned char*)malloc(encodedLength);
+    // 注意这里要用 char*
+    char* encodedData = (char*)malloc(encodedLength);
     if (!encodedData) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    // 执行 Base64 编码
-    if (!CryptBinaryToStringA(data, data_length, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, encodedData, &encodedLength)) {
-        fprintf(stderr, "CryptBinaryToStringA (encoding) failed: %lu\n", GetLastError());
+    if (!CryptBinaryToStringA(
+        data,
+        (DWORD)data_length,
+        CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF,
+        encodedData,
+        &encodedLength))
+    {
+        fprintf(stderr, "CryptBinaryToStringA (encoding) Failed With Error: %lu\n", GetLastError());
         free(encodedData);
         return NULL;
     }
 
-    return encodedData;
+    return (unsigned char*)encodedData;
 }
 
 unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned char key, size_t* encoded_length) {
@@ -518,6 +528,9 @@ unsigned char* str_replace_all(unsigned char* str, unsigned char* find, unsigned
     size_t find_len = strlen(find);
     size_t replace_len = strlen(replace);
     size_t str_len = strlen(str);
+
+    if (find_len == 0) return NULL;
+
     size_t replaceCount = 0;
 
     // 计算替换次数
@@ -529,10 +542,6 @@ unsigned char* str_replace_all(unsigned char* str, unsigned char* find, unsigned
 
     // 计算替换后字符串的长度
     size_t result_final_len = str_len + (replace_len - find_len) * replaceCount;
-    if (result_final_len > str_len && replaceCount == 0) {
-        fprintf(stderr, "Length calculation error\n");
-        return NULL;
-    }
 
     // 分配内存
     unsigned char* result = (unsigned char*)malloc(result_final_len + 1);
@@ -554,6 +563,7 @@ unsigned char* str_replace_all(unsigned char* str, unsigned char* find, unsigned
             *res_ptr++ = *ptr++;
         }
     }
+
     *res_ptr = '\0';
 
     return result;

