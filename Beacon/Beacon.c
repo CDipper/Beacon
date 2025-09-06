@@ -161,7 +161,7 @@ VOID executeCommand(unsigned char* commandBuf, uint32_t commandType, size_t comm
 		callbackType = CALLBACK_OUTPUT;
 		postMsg = CmdFileCopy(commandBuf, commandBuflen, &msgLength);
 		break;
-    case CMD_TYPE_MV:
+    case CMD_TYPE_MV:            // 1
         callbackType = CALLBACK_OUTPUT;
         postMsg = CmdFileMove(commandBuf, commandBuflen, &msgLength);
         break;

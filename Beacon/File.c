@@ -760,7 +760,9 @@ unsigned char* CmdFileMove(unsigned char* commandBuf, size_t commandBuflen, size
     unsigned char* postMsg = (unsigned char*)malloc(postMsgLen);
     snprintf(postMsg, postMsgLen, "%s%s -> %s", copyStr, existingFileName, newFileName);
 
-    *msgLen = strlen((char*)postMsg);
+    if (postMsg) {
+        *msgLen = strlen((char*)postMsg);
+    }
 
     free(existingFileName);
     free(newFileName);
