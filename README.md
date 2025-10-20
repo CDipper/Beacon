@@ -35,16 +35,19 @@
 - [x] jobs
 - [x] jobkill
 
-## Bug
+## Get Started
 
-开发过程中测试发现的Bug：
+1.git clone下来
 
-- [x] drivers命令崩溃
-- [x] AES有些时候解密出错，解密数据大小不为16的倍数
-- [x] shell执行calc时崩溃
-- [x] download命令无法成功下载
-- [x] FileBrowse多次后会崩溃
-- [x] execute-assembly回显数据有两份相同的（原因：注入了两次）
+2.Config.c中写你C2的地址，和监听器的端口
+
+3.RSA公钥换成你自己的，PEM格式
+
+4.没有任何第三方库，Debug模式，x64编译即可
+
+5.启动你的teamserver以及客户端，记得带上beacon.profile
+
+6.双击编译后的程序，即可上线
 
 ## ToDo
 
@@ -79,3 +82,4 @@
 - 此Beacon的注入方式有CreateRemoteThread以及SetThreadContext&ResumeThread，对于创建进程采用后者，注入到已有进程采用前者
 - screenshot、keylogger等功能，都是使用CobaltStrike已有的Dll，追求opsec，可以自己实现
 - inject命令进行Beacon迁移，也是使用CobaltStrike自带的原始beacon.dll
+- 仅支持x64，仅测试了Debug模式
