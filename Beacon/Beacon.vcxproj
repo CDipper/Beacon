@@ -163,22 +163,35 @@
     <ClCompile Include="Bof.c" />
     <ClCompile Include="Command.c" />
     <ClCompile Include="Config.c" />
+    <ClCompile Include="DllInject.c" />
     <ClCompile Include="File.c" />
     <ClCompile Include="Http.c" />
+    <ClCompile Include="Identity.c" />
     <ClCompile Include="Job.c" />
     <ClCompile Include="MetaData.c" />
+    <ClCompile Include="Pipe.c" />
+    <ClCompile Include="Process.c" />
     <ClCompile Include="Shell.c" />
+    <ClCompile Include="Spawn.c" />
     <ClCompile Include="Util.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Api.h" />
     <ClInclude Include="Bof.h" />
+    <ClInclude Include="CallbackType.h" />
     <ClInclude Include="Command.h" />
     <ClInclude Include="Config.h" />
-    <ClInclude Include="error.h" />
+    <ClInclude Include="DllInject.h" />
+    <ClInclude Include="Error.h" />
+    <ClInclude Include="File.h" />
     <ClInclude Include="Http.h" />
+    <ClInclude Include="Identity.h" />
     <ClInclude Include="Job.h" />
     <ClInclude Include="MetaData.h" />
+    <ClInclude Include="Pipe.h" />
+    <ClInclude Include="Process.h" />
+    <ClInclude Include="Shell.h" />
+    <ClInclude Include="Spawn.h" />
     <ClInclude Include="Util.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

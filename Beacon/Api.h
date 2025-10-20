@@ -42,8 +42,8 @@ int     BeaconDataInt(datap* parser);
 short   BeaconDataShort(datap* parser);
 char    BeaconDataByte(datap* parser);
 char* BeaconDataStringPointer(datap* parser);
+int BeaconDataStringCopySafe(datap* parse, char* buffer, int max);
 char* BeaconDataStringPointerCopy(datap* parser, int size);
-int     BeaconDataStringCopySafe(datap* parser, char* buffer, int size);
 int     BeaconDataStringCopy(datap* parser, char* buffer, int size);
 char* BeaconDataOriginal(datap* parser);
 char* BeaconDataBuffer(datap* parser);
@@ -130,6 +130,7 @@ typedef struct {
  *                 The list is terminated by the HEAP_RECORD.ptr set to NULL.
  *  mask         - the mask that beacon randomly generated to apply
  */
+
 typedef struct {
 	char* sleep_mask_ptr;
 	DWORD   sleep_mask_text_size;
@@ -141,7 +142,7 @@ typedef struct {
 	char    mask[MASK_SIZE];
 } BEACON_INFO;
 
-void   BeaconInformation(BEACON_INFO* info);
+void BeaconInformation(BEACON_INFO* info);
 
 /* Key/Value store functions
  *    These functions are used to associate a key to a memory address and save
@@ -199,12 +200,18 @@ typedef struct _Beacon_Internal_Api
 	BOOL(*fnFreeLibrary)(HMODULE hLibModule);
 	FARPROC(*fnGetProcAddress)(HMODULE hModule, LPCSTR lpProcName);
 	HMODULE(*fnGetModuleHandleA)(LPCSTR lpModuleName);
+	/*
+	* data API
+	*/
 	void (*fnBeaconDataParse)(datap* parser, char* buffer, int size);
 	char* (*fnBeaconDataPtr)(datap* parser, int size);
 	int (*fnBeaconDataInt)(datap* parser);
 	short (*fnBeaconDataShort)(datap* parser);
 	int (*fnBeaconDataLength)(datap* parser);
 	char* (*fnBeaconDataExtract)(datap* parser, int* size);
+	/*
+	* format api
+	*/
 	void (*fnBeaconFormatAlloc)(formatp* format, int maxsz);
 	void (*fnBeaconFormatReset)(formatp* format);
 	void (*fnBeaconFormatPrintf)(formatp* format, char* fmt, ...);
@@ -212,21 +219,36 @@ typedef struct _Beacon_Internal_Api
 	void (*fnBeaconFormatFree)(formatp* format);
 	char* (*fnBeaconFormatToString)(formatp* format, int* size);
 	void (*fnBeaconFormatInt)(formatp* format, int value);
+	/*
+	* output api
+	*/
 	void (*fnBeaconOutput)(int type, char* data, int len);
 	void (*fnBeaconPrintf)(int type, char* fmt, ...);
 	void (*fnBeaconErrorD)(int type, int d1);
 	void (*fnBeaconErrorDD)(int type, int d1, int d2);
 	void (*fnBeaconErrorNA)(int type);
+	/*
+	* token api
+	*/
 	BOOL(*fnBeaconUseToken)(HANDLE token);
 	BOOL(*fnBeaconIsAdmin)();
 	void (*fnBeaconRevertToken)();
+	/*
+	* spawn and inject api
+	*/
 	void (*fnBeaconGetSpawnTo)(BOOL x86, char* buffer, int length);
 	void (*fnBeaconCleanupProcess)(PROCESS_INFORMATION* pInfo);
 	void (*fnBeaconInjectProcess)(HANDLE hProcess, int pid, char* payload, int p_len, int p_offset, char* arg, int a_len);
 	BOOL(*fnBeaconSpawnTemporaryProcess)(BOOL x86, BOOL ignoreToken, STARTUPINFO* si, PROCESS_INFORMATION* pInfo);
 	void (*fnBeaconInjectTemporaryProcess)(PROCESS_INFORMATION* pInfo, char* payload, int p_len, int p_offset, char* arg, int a_len);
+	/*
+	* util api
+	*/
 	BOOL(*fnToWideChar)(char* src, wchar_t* dst, int max);
-	PROC dynamicFns[MAX_DYNAMIC_FUNCTIONS];
+	/*
+	* other api
+	*/
+	void* dynamicFns[MAX_DYNAMIC_FUNCTIONS];
 } Beacon_Internal_Api;
 
 void BeaconInternalAPI(Beacon_Internal_Api* beaconInternalApi);

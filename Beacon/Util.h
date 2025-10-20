@@ -16,11 +16,10 @@ void PutUint32BigEndian(uint8_t* bytes, uint32_t value);
 void PutUint16BigEndian(uint8_t* bytes, uint16_t value);
 BOOL RandomAESKey(unsigned char* aesKey, size_t keyLength);
 int GenerateRandomInt(int min, int max);
-uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays);
 uint8_t* WriteInt(size_t nInt, uint8_t* bBytes);
 unsigned char* base64Encode(unsigned char* data, size_t Length);
-unsigned char* NetbiosDecode(unsigned char* data, size_t data_length, unsigned char key, size_t* NetbiosDecodelen);
-unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned char key, size_t* encoded_length);
+unsigned char* NetbiosDecode(unsigned char* data, size_t data_length, char key, size_t* NetbiosDecodelen);
+unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, char key, size_t* encoded_length);
 unsigned char* MaskDecode(unsigned char* data, size_t data_length, unsigned char* key, int key_length);
 unsigned char* MaskEncode(unsigned char* data, size_t data_length, size_t* mask_length);
 unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, size_t dataLen, size_t* decryptAES_CBCdatalen);
@@ -33,5 +32,5 @@ BOOL SHA256_Hash(unsigned char* input, DWORD inputLength, unsigned char* output)
 
 
 #define HMAC_KEY_LENGTH 16  // HMAC KeyµÄ³¤¶È
-extern unsigned char Hmackey[16];
+extern char hmackey[16];
 

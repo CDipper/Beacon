@@ -24,9 +24,6 @@
     <ClCompile Include="Http.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="Job.c">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="Util.c">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -48,6 +45,24 @@
     <ClCompile Include="Api.c">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="DllInject.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Job.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Spawn.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Pipe.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Process.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Identity.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MetaData.h">
@@ -65,16 +80,40 @@
     <ClInclude Include="Command.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Job.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="Api.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="Bof.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="error.h">
+    <ClInclude Include="Error.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DllInject.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Job.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Spawn.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Pipe.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Process.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Shell.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="File.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CallbackType.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Identity.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

