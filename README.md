@@ -41,7 +41,7 @@
 
 2.Config.c中写你C2的地址，和监听器的端口
 
-3.RSA公钥换成你自己的，PEM格式
+3.RSA公钥换成你自己的，PEM格式，或者将提供的`.cobaltstrike.beacon_keys`文件作为你的私钥，替换到你的CobaltStrike客户端
 
 4.没有任何第三方库，Debug模式，x64编译即可
 
