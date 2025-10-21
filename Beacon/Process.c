@@ -20,7 +20,7 @@ BOOL is_wow64(HANDLE process) {
 	BOOL bIsWow64 = FALSE;
 
 	if (!IsWow64Process(process, &bIsWow64)) {
-		fprintf(stderr, "IsWow64Process failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "IsWow64Process failed with error:%lu\n", GetLastError());
 		return FALSE;
 	}
 
@@ -89,7 +89,7 @@ VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen)
                 int bufferSize = WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, NULL, 0, NULL, NULL);
                 if(bufferSize == 0)
                 {
-                    fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n\n", GetLastError());
+                    fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
 				}
                 unsigned char* szExeFileChar = (unsigned char*)malloc(bufferSize);
                 if(!szExeFileChar)
@@ -101,7 +101,7 @@ VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen)
 				}
                 // 将 wchar_t* 类型字符串转换成 unsigned char* 类型字符串
                 if (WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, szExeFileChar, bufferSize, NULL, NULL) == 0) {
-                    fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n\n", GetLastError());
+                    fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
                 }
 
                 hProcess = OpenProcess(PROCESS_ALL_ACCESS, 0, th32ProcessID);
@@ -113,7 +113,7 @@ VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen)
                     }
                     if (!ProcessIdToSessionId(pe32.th32ProcessID, &pSessionId))
                     {
-                        // fprintf(stderr, "ProcessIdToSessionId failed with error:%lu\n\n", GetLastError());
+                        // fprintf(stderr, "ProcessIdToSessionId failed with error:%lu\n", GetLastError());
                         pSessionId = -1;
                     }
 
@@ -132,7 +132,7 @@ VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen)
                 {
                     if (!ProcessIdToSessionId(pe32.th32ProcessID, &pSessionId))
                     {
-						// fprintf(stderr, "ProcessIdToSessionId failed with error:%lu\n\n", GetLastError());
+						// fprintf(stderr, "ProcessIdToSessionId failed with error:%lu\n", GetLastError());
                         pSessionId = -1;
                     }
                     BeaconFormatPrintf((formatp*)&datap, (unsigned char*)"%s\t%d\t%d\t%s\t%s\t%d\n",
@@ -175,7 +175,7 @@ BOOL GetProcessUserInfo(HANDLE hProcess, unsigned char* userSid)
     BOOL bRet = OpenProcessToken(hProcess, TOKEN_QUERY, &hToken);
     if (!bRet)
     {
-		fprintf(stderr, "OpenProcessToken failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "OpenProcessToken failed with error:%lu\n", GetLastError());
         return FALSE;
     }
     bRet = GetUserSid(2048, hToken, userSid);
@@ -201,7 +201,7 @@ BOOL GetUserSid(size_t length, HANDLE hToken, unsigned char* result)
 
     // 获取所需的 TokenInformation 大小
     if (!GetTokenInformation(hToken, TokenUser, NULL, 0, &ReturnLength) && GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-        fprintf(stderr, "GetTokenInformation failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "GetTokenInformation failed with error:%lu\n", GetLastError());
         return FALSE;
     }
 
@@ -213,7 +213,7 @@ BOOL GetUserSid(size_t length, HANDLE hToken, unsigned char* result)
 
     // 获取 TokenInformation
     if (!GetTokenInformation(hToken, TokenUser, TokenInformation, ReturnLength, &ReturnLength)) {
-        fprintf(stderr, "GetTokenInformation failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "GetTokenInformation failed with error:%lu\n", GetLastError());
         free(TokenInformation);
         return FALSE;
     }
@@ -228,7 +228,7 @@ BOOL GetUserSid(size_t length, HANDLE hToken, unsigned char* result)
         &cchReferencedDomainName,
         &peUse))
     {
-        fprintf(stderr, "LookupAccountSidA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "LookupAccountSidA failed with error:%lu\n", GetLastError());
         free(TokenInformation);
         return FALSE;
     }

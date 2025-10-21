@@ -117,7 +117,7 @@ DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int size)
 {
 	DWORD totalBytesAvail = 0;
 	if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &totalBytesAvail, NULL)) {
-		fprintf(stderr, "PeekNamePipe failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "PeekNamePipe failed with error:%lu\n", GetLastError());
 		return -1;
 	}
 
@@ -130,7 +130,7 @@ DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int size)
 			break;
 
 		if (!ReadFile(hPipe, buffer, size - totalRead, &read, NULL)) {
-			fprintf(stderr, "ReadFile failed with error:%lu\n\n", GetLastError());
+			fprintf(stderr, "ReadFile failed with error:%lu\n", GetLastError());
 			return -1;
 		}
 
@@ -138,7 +138,7 @@ DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int size)
 		buffer += read;
 
 		if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &totalBytesAvail, NULL)) {
-			fprintf(stderr, "PeekNamePipe failed with error:%lu\n\n", GetLastError());
+			fprintf(stderr, "PeekNamePipe failed with error:%lu\n", GetLastError());
 			return -1;
 		}
 	}
@@ -169,7 +169,7 @@ int ProtocolSmbPipeRead(HANDLE channel, unsigned char* buffer, int length)
 	for (totalRead = 0; totalRead < length; totalRead += read)
 	{
 		if (!ReadFile(channel, buffer + totalRead, length - totalRead, &read, NULL)) {
-			fprintf(stderr, "ReadFile failed with error:%lu\n\n", GetLastError());
+			fprintf(stderr, "ReadFile failed with error:%lu\n", GetLastError());
 			return -1;
 		}
 

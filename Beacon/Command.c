@@ -77,7 +77,7 @@ wchar_t* makeMetaData() {
     // 先计算宽字符长度（包含结尾 \0）
     int wideLen = MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, NULL, 0);
     if (wideLen == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
         free(cookieStr);
         return NULL;
     }
@@ -91,7 +91,7 @@ wchar_t* makeMetaData() {
     }
 
     if (MultiByteToWideChar(CP_ACP, 0, (unsigned char*)cookieStr, -1, wCookieStr, wideLen) == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
         free(cookieStr);
         free(wCookieStr);
         return NULL;

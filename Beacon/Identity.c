@@ -8,13 +8,13 @@ unsigned char* CmdGetUid(size_t* msgLen) {
     DWORD size = MAX_COMPUTERNAME_LENGTH + 1;
 
     if (!GetComputerNameA(computerName, &size)) {
-        fprintf(stderr, "GetComputerNameA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "GetComputerNameA failed with error:%lu\n", GetLastError());
         return NULL;
     }
 
     size = UNLEN + 1;
     if (!GetUserNameA(userName, &size)) {
-        fprintf(stderr, "GetUserNameA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "GetUserNameA failed with error:%lu\n", GetLastError());
         return NULL;
     }
 
@@ -68,14 +68,14 @@ unsigned char* AttrToStateStringA(DWORD attrs) {
 unsigned char* CmdGetPrivs(size_t* msgLength) {
     HANDLE hToken = NULL;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
-        fprintf(stderr, "OpenProcessToken failed: %lu\n\n", GetLastError());
+        fprintf(stderr, "OpenProcessToken failed: %lu\n", GetLastError());
         return NULL;
     }
 
     DWORD needed = 0;
     if (!GetTokenInformation(hToken, TokenPrivileges, NULL, 0, &needed) &&
         GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-        fprintf(stderr, "GetTokenInformation failed: %lu\n\n", GetLastError());
+        fprintf(stderr, "GetTokenInformation failed: %lu\n", GetLastError());
         CloseHandle(hToken);
         return NULL;
     }
@@ -87,7 +87,7 @@ unsigned char* CmdGetPrivs(size_t* msgLength) {
     }
 
     if (!GetTokenInformation(hToken, TokenPrivileges, pTP, needed, &needed)) {
-        fprintf(stderr, "GetTokenInformation failed: %lu\n\n", GetLastError());
+        fprintf(stderr, "GetTokenInformation failed: %lu\n", GetLastError());
         free(pTP);
         CloseHandle(hToken);
         return NULL;

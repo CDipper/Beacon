@@ -1,0 +1,19 @@
+﻿cl : 命令行  warning D9035: “Gm”选项已否决，并将在将来的版本中移除
+  Util.c
+  Spawn.c
+  Shell.c
+  Process.c
+  Pipe.c
+  MetaData.c
+  Job.c
+  Identity.c
+  Http.c
+  File.c
+  DllInject.c
+  Config.c
+  Command.c
+  Bof.c
+  Beacon.c
+  Api.c
+  正在生成代码...
+  Beacon.vcxproj -> D:\C2-develop\ReBeacon\Beacon\x64\Debug\Beacon.exe

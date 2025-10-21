@@ -154,7 +154,7 @@ BOOL PemToCNG(PCSTR pszPem, BCRYPT_KEY_HANDLE* phKey)
 
     // ת Base64 -> DER
     if (!CryptStringToBinaryA(pszPem, 0, CRYPT_STRING_BASE64_ANY, NULL, &cbDer, NULL, NULL)) {
-        fprintf(stderr, "CryptStringToBinaryA(size) failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CryptStringToBinaryA(size) failed with error:%lu\n", GetLastError());
         goto Cleanup;
     }
 
@@ -165,7 +165,7 @@ BOOL PemToCNG(PCSTR pszPem, BCRYPT_KEY_HANDLE* phKey)
     }
 
     if (!CryptStringToBinaryA(pszPem, 0, CRYPT_STRING_BASE64_ANY, pbDer, &cbDer, NULL, NULL)) {
-        fprintf(stderr, "CryptStringToBinaryA(data) failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CryptStringToBinaryA(data) failed with error:%lu\n", GetLastError());
         goto Cleanup;
     }
 
@@ -176,12 +176,12 @@ BOOL PemToCNG(PCSTR pszPem, BCRYPT_KEY_HANDLE* phKey)
         NULL,
         &pPubKeyInfo,
         &cbPubKeyInfo)) {
-        fprintf(stderr, "CryptDecodeObjectEx failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CryptDecodeObjectEx failed with error:%lu\n", GetLastError());
         goto Cleanup;
     }
 
     if (!CryptImportPublicKeyInfoEx2(X509_ASN_ENCODING, pPubKeyInfo, 0, NULL, phKey)) {
-        fprintf(stderr, "CryptImportPublicKeyInfoEx2 failed with Error:%lu\n\n", GetLastError());
+        fprintf(stderr, "CryptImportPublicKeyInfoEx2 failed with Error:%lu\n", GetLastError());
         goto Cleanup;
     }
 
@@ -272,7 +272,7 @@ cleanup:
 ULONG GetIP() {
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        fprintf(stderr, "WSAStartup failed with error:%lu\n\n", GetLastError());
+        fprintf(stderr, "WSAStartup failed with error:%lu\n", GetLastError());
         return 0;
     }
     SOCKET sock = WSASocketA(AF_INET, SOCK_DGRAM, 0, NULL, 0, 0);

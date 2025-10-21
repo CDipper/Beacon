@@ -82,7 +82,7 @@ VOID CmdInlineExecute(unsigned char* commandBuf, size_t commandBuflen) {
 	unsigned char* lpCodeStartAddress = (unsigned char*)VirtualAlloc(NULL, codeLength, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!lpCodeStartAddress)
 	{
-		fprintf(stderr, "VirtualAlloc failed with error:%lu\n\n", GetLastError());
+		fprintf(stderr, "VirtualAlloc failed with error:%lu\n", GetLastError());
 		free(api);
 		return;
 	}

@@ -71,7 +71,7 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
         NULL,
         &encodedLength))
     {
-        fprintf(stderr, "CryptBinaryToStringA (size calc) failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "CryptBinaryToStringA (size calc) failed with error: %lu\n", GetLastError());
         return NULL;
     }
 
@@ -89,7 +89,7 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
         encodedData,
         &encodedLength))
     {
-        fprintf(stderr, "CryptBinaryToStringA (encoding) failed with error: %lu\n\n", GetLastError());
+        fprintf(stderr, "CryptBinaryToStringA (encoding) failed with error: %lu\n", GetLastError());
         free(encodedData);
         return NULL;
     }
