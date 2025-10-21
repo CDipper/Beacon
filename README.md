@@ -51,8 +51,6 @@
 
 ## ToDo
 
-- [x] 不使用buff_init、buffer_append、buffer_free函数，容易造成崩溃
-
 - [x] 使用Beacon内部API进行数据解析
 
 - [x] 当Beacon连接不到Server时，重复进行尝试，每次失败后，睡眠一段时间
