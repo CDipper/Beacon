@@ -51,6 +51,8 @@
 
 - 这仅仅是一个简单的载荷，如果可以你能够进行很多免杀工作，但我相信这个载荷本身具有一定的免杀性
 
+演示如下：
+
 
 https://github.com/user-attachments/assets/a59dc77f-3ca2-47c5-bb1d-0d1e857857ba
 
