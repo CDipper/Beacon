@@ -49,6 +49,10 @@
 
 - 双击编译后的程序，即可上线
 
+- 这仅仅是一个简单的载荷，如果可以你能够进行很多免杀工作，但我相信这个载荷本身具有一定的免杀性
+
+<video src="./2025-10-26 11-31-58.mkv"></video>
+
 ## ToDo
 
 - [x] 使用Beacon内部API进行数据解析
@@ -73,8 +77,8 @@
 - 不支持profile解析（一大痛点）
 - 此Beacon中但凡涉及到进程注入的，都是注入到rundll32
 
-- 此Beacon的注入方式有CreateRemoteThread以及SetThreadContext&ResumeThread，对于创建进程采用后者，注入到已有进程采用前者
-- screenshot、keylogger等功能，都是使用CobaltStrike已有的Dll，若追求opsec，可以自己实现
+- 此Beacon的注入方式有CreateRemoteThread以及SetThreadContext&ResumeThread，对于创建进程采用后者，注入到已有进程采用前者，追求opsec，可以实现更加隐蔽的进程注入方法（线程池注入、无线程注入等）
+- screenshot、keylogger等功能，都是使用CobaltStrike已有的Dll，若追求opsec，可以自己实现这两个功能Dll
 - inject命令进行Beacon迁移，也是使用CobaltStrike自带的原始`beacon.dll`，可以自行修改CobaltStrike客户端进行Dll替换
 - 仅支持x64，仅测试了Debug模式
 
