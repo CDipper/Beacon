@@ -12,11 +12,12 @@
 
 #pragma warning(disable:4996) 
 
+wchar_t* convertToWideChar(char* input);
+unsigned char* convertWideCharToUTF8(wchar_t* wideStr);
 void PutUint32BigEndian(uint8_t* bytes, uint32_t value);
 void PutUint16BigEndian(uint8_t* bytes, uint16_t value);
 BOOL RandomAESKey(unsigned char* aesKey, size_t keyLength);
 int GenerateRandomInt(int min, int max);
-uint8_t* WriteInt(size_t nInt, uint8_t* bBytes);
 unsigned char* base64Encode(unsigned char* data, size_t Length);
 unsigned char* NetbiosDecode(unsigned char* data, size_t data_length, char key, size_t* NetbiosDecodelen);
 unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, char key, size_t* encoded_length);
@@ -24,13 +25,11 @@ unsigned char* MaskDecode(unsigned char* data, size_t data_length, unsigned char
 unsigned char* MaskEncode(unsigned char* data, size_t data_length, size_t* mask_length);
 unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, size_t dataLen, size_t* decryptAES_CBCdatalen);
 unsigned char* AesCBCEncrypt(unsigned char* data, unsigned char* key, size_t dataLen, size_t* encryptedDataLen);
-uint32_t bigEndianUint32(uint8_t b[4]);
 unsigned char* HMkey( unsigned char* encryptedBytes, size_t encryptedBytesLen);
 unsigned char* str_replace_all(unsigned char* str, unsigned char* find, unsigned char* replace);
-uint16_t Readshort(uint8_t* b);
 BOOL SHA256_Hash(unsigned char* input, DWORD inputLength, unsigned char* output);
 
 
-#define HMAC_KEY_LENGTH 16  // HMAC KeyµÄ³¤¶È
+#define HMAC_KEY_LENGTH 16 
 extern char hmackey[16];
 

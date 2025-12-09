@@ -4,12 +4,57 @@
 
 extern char hmackey[16];
 
-uint16_t Readshort(uint8_t* b) {
-    return (uint16_t)b[0] << 8 | (uint16_t)b[1];
+wchar_t* convertToWideChar(char* input) {
+    if (input == NULL) {
+        return NULL;
+    }
+    // 第一次调用获取所需缓冲区大小
+    int len = MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, NULL, 0);
+    if (len == 0) {
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
+        return NULL;
+    }
+
+    wchar_t* wideStr = (wchar_t*)malloc(len * sizeof(wchar_t));
+    if (wideStr == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+
+    if (MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, wideStr, len) == 0) {
+        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
+        free(wideStr);
+        return NULL;
+    }
+
+    return wideStr;
 }
 
-uint32_t bigEndianUint32(uint8_t b[4]) {
-    return ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) | ((uint32_t)b[2] << 8) | (uint32_t)b[3];
+char* convertWideCharToUTF8(wchar_t* wideStr) {
+    if (!wideStr) {
+        return NULL;
+    }
+
+    // 包含 \0
+    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, NULL, 0, NULL, NULL);
+    if (utf8Len == 0) {
+        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
+        return NULL;
+    }
+
+    char* utf8Str = (char*)malloc(utf8Len);
+    if (!utf8Str) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return NULL;
+    }
+
+    if (WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8Str, utf8Len, NULL, NULL) == 0) {
+        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
+        free(utf8Str);
+        return NULL;
+    }
+
+    return utf8Str;
 }
 
 void PutUint32BigEndian(uint8_t* b, uint32_t v) {
@@ -17,11 +62,6 @@ void PutUint32BigEndian(uint8_t* b, uint32_t v) {
     b[1] = (uint8_t)(v >> 16);
     b[2] = (uint8_t)(v >> 8);
     b[3] = (uint8_t)v;
-}
-
-uint8_t* WriteInt(size_t nInt, uint8_t* bBytes) {
-    PutUint32BigEndian(bBytes, nInt);
-    return bBytes;
 }
 
 void PutUint16BigEndian(uint8_t* bytes, uint16_t value) {
@@ -94,7 +134,7 @@ unsigned char* base64Encode(unsigned char* data, size_t data_length) {
         return NULL;
     }
 
-    return (unsigned char*)encodedData;
+    return encodedData;
 }
 
 unsigned char* NetbiosEncode(unsigned char* data, size_t data_length, char key, size_t* encoded_length) {
@@ -142,7 +182,10 @@ void XOR(unsigned char* data, unsigned char* key, size_t data_length) {
 }
 
 unsigned char* MaskEncode(unsigned char* data, size_t data_length, size_t* mask_length) {
-    if (!data || data_length == 0) return NULL;
+    if (!data || data_length == 0) {
+        fprintf(stderr, "Invalid input data or length\n");
+        return NULL;
+    }
 
     unsigned char* result = (unsigned char*)malloc(data_length + 4);
     if (!result) {

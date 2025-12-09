@@ -2,59 +2,6 @@
 #include "File.h"
 #include "Api.h"
 
-wchar_t* convertToWideChar(char* input) {
-    if (input == NULL) {
-        return NULL;
-    }
-	// 第一次调用获取所需缓冲区大小
-    int len = MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, NULL, 0);
-    if (len == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
-        return NULL;
-    }
-
-    wchar_t* wideStr = (wchar_t*)malloc(len * sizeof(wchar_t));
-    if (wideStr == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
-        return NULL;
-    }
-
-    if (MultiByteToWideChar(CP_ACP, 0, (LPCCH)input, -1, wideStr, len) == 0) {
-        fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
-        free(wideStr);
-        return NULL;
-    }
-
-    return wideStr;
-}
-
-char* convertWideCharToUTF8(const wchar_t* wideStr) {
-    if (!wideStr) {
-        return NULL;
-    }
-
-    // 包含 \0
-    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, NULL, 0, NULL, NULL);
-    if (utf8Len == 0) {
-        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
-        return NULL;
-    }
-
-    char* utf8Str = (char*)malloc(utf8Len);
-    if (!utf8Str) {
-		fprintf(stderr, "Memory allocation failed\n");
-        return NULL;
-    }
-
-    if (WideCharToMultiByte(CP_UTF8, 0, wideStr, -1, utf8Str, utf8Len, NULL, NULL) == 0) {
-        fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
-        free(utf8Str);
-        return NULL;
-    }
-
-    return utf8Str;
-}
-
 /*
 C:\Users\*
 D    0    -    .

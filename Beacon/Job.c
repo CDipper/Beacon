@@ -215,7 +215,7 @@ void ProcessJobEntry(int max) {
 			DataProcess(buf, totalRead, tmpJob->callbackType);
 		}
 
-		// 判断是否有死掉的进程
+		// 判断是否有 Die 的进程
 		if (tmpJob->isPipe == JOB_ENTRY_NAMEDPIPE && totalRead == -1) {
 			tmpJob->isDead = JOB_STATUS_DEAD;
 		}
@@ -279,6 +279,10 @@ unsigned char* CmdJobKill(unsigned char* commandBuf, size_t commandBuflen, size_
 	unsigned char* postMsg;
 	if (Flag) {
 		postMsg = (unsigned char*)malloc(strlen(success));
+		if (!postMsg) {
+			fprintf(stderr, "Memory allocation failed\n");
+			return NULL;
+		}
 		memcpy(postMsg, success, strlen(success));
 		*msgLength = strlen(success);
 		postMsg[*msgLength] = '\0';
@@ -293,6 +297,7 @@ unsigned char* CmdJobKill(unsigned char* commandBuf, size_t commandBuflen, size_
 		*msgLength = strlen(fail);
 		postMsg[*msgLength] = '\0';
 	}
+
 	JobCleanup();
 	
 	return postMsg;

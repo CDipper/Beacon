@@ -25,6 +25,8 @@ const char* Http_post_client_output_append;
 extern char* pub_key_str;
 const char* Response_prepend;
 const char* Response_append;
+const char* header;
+const char netbiosKey;
 const char IV[];
 int SleepTime;
 int jitter;

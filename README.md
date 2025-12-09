@@ -1,8 +1,8 @@
 # 简单重构Beacon  With C 
 
-此项目是适配CobaltStrike客户段的重构的Beacon。需要使用到提供的`beacon.profile`，此profile主要是对通信流量进行了一些处理（编码，prefix、suffix等）。
+此项目是适配CobaltStrike客户段的重构的Beacon（x64）。需要使用到提供的profile（beacon.profile），此profile主要是对通信流量进行了一些处理（编码，prefix、suffix等）。
 
-下面所有的情况都是针对CobaltStrike 4.4客户端。
+所有的情况都是针对CobaltStrike 4.4客户端，在更高的CobaltStrike版本上没有进行测试。同时此项目的Beacon仅是一个简单的载荷，不及CobaltStrike的扩展性。我觉得它具有一定的免杀性，如果可以，你能够进行一些功能的扩展以及防御的规避。
 
 ![image-20251020142632555](README.assets/image-20251020142632555.png)
 
@@ -37,22 +37,29 @@
 
 ## 快速开始
 
-- git clone下来
+- **克隆项目代码**
 
-- `Config.c`中写你C2的地址，和监听器的端口
+  ```bash
+  git clone https://github.com/CDipper/Beacon
+  ```
 
-- RSA公钥换成你自己的，PEM格式，或者将提供的`.cobaltstrike.beacon_keys`文件作为你的私钥，替换到你的CobaltStrike客户端，或者参考这个项目 https://github.com/Slzdude/cs-scripts 获取RSA公钥
+- **配置你的C2信息**
 
-- 没有任何第三方库，Debug模式，x64编译即可
+  在 `Config.c` 中填写你的 C2 服务器地址及Listener端口。
 
-- 启动你的teamserver以及客户端，记得带上beacon.profile
+- **配置RSA公钥**
 
-- 双击编译后的程序，即可上线
+  在`Config.c`中将RSA公钥替换为你自己的（PEM格式），或者直接使用 项目提供的`.cobaltstrike.beacon_keys` 文件作为私钥，并将其替换到 CobaltStrike客户端中。
 
-- 这仅仅是一个简单的载荷，如果可以你能够进行很多免杀工作，但我相信这个载荷本身具有一定的免杀性
+- **编译**
+
+  Debug + x64编译即可，没有任何第三方库。
+
+- **Teamserver启动**
+
+  启动teamserver带上此项目提供的profile即可。
 
 演示如下：
-
 
 https://github.com/user-attachments/assets/a59dc77f-3ca2-47c5-bb1d-0d1e857857ba
 
@@ -79,14 +86,14 @@ https://github.com/user-attachments/assets/a59dc77f-3ca2-47c5-bb1d-0d1e857857ba
 
 ## 其它
 
-- 上传大文件（>几十MB）时，CobaltStrike客户端可能要读取解析文件，会造成长时间卡顿
-- 不支持profile解析（一大痛点）
-- 此Beacon中但凡涉及到进程注入的，都是注入到rundll32
+- 上传大文件（>几十MB）时，CobaltStrike客户端可能要读取解析文件，会造成长时间卡顿。
+- 不支持profile解析（一大痛点）。
+- 此Beacon中但凡涉及到进程注入的，都是注入到rundll32。
 
-- 此Beacon的注入方式有CreateRemoteThread以及SetThreadContext&ResumeThread，对于创建进程采用后者，注入到已有进程采用前者，追求opsec，可以实现更加隐蔽的进程注入方法（线程池注入、无线程注入等）
-- screenshot、keylogger等功能，都是使用CobaltStrike已有的Dll，若追求opsec，可以自己实现这两个功能Dll
-- inject命令进行Beacon迁移，也是使用CobaltStrike自带的原始`beacon.dll`，可以自行修改CobaltStrike客户端进行Dll替换
-- 仅支持x64，仅测试了Debug模式
+- 此Beacon的注入方式有CreateRemoteThread以及SetThreadContext&ResumeThread，对于创建进程采用后者，注入到已有进程采用前者，追求opsec，可以实现更加隐蔽的进程注入方法（线程池注入、无线程注入等）。
+- screenshot、keylogger等功能，都是使用CobaltStrike已有的Dll，若追求opsec，可以自己实现这两个功能Dll。
+- inject命令进行Beacon迁移，也是使用CobaltStrike自带的原始`beacon.dll`，可以自行修改CobaltStrike客户端进行Dll替换。
+- 仅支持x64，仅测试了Debug模式。
 
 ## 免责声明
 

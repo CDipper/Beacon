@@ -201,7 +201,6 @@ EncryptMetadataResult EncryMetadata()
     BCRYPT_KEY_HANDLE hKey = NULL;
     uint8_t* pSrcData = NULL;
     unsigned char* pEncrypted = NULL;
-    BOOL success = FALSE;
 
     // 获取并导入 PEM 公钥
     if (!PemToCNG(pub_key_str, &hKey) || !hKey) {
@@ -259,7 +258,6 @@ EncryptMetadataResult EncryMetadata()
     result.EncryptMetaData = pEncrypted;
     result.EncryptMetaDataLen = cbEncrypted;
     pEncrypted = NULL; 
-    success = TRUE;
 
 cleanup:
     if (pSrcData) free(pSrcData);

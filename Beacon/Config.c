@@ -25,8 +25,10 @@ const char* Http_post_id_prepend = "user=";
 const char* Http_post_id_append = "%%";
 const char* Http_post_client_output_prepend = "data=";
 const char* Http_post_client_output_append = "%%";
-const char IV[] = "abcdefghijklmnop"; // AES CBC Key
+const char* header = "User:";
+const char netbiosKey = 'A';
+const char IV[] = "abcdefghijklmnop";
 int SleepTime = 5000;
-int jitter = 0;
+int jitter = 100;
 int Counter = 0;
 

@@ -42,7 +42,5 @@ struct FileThreadArgs {
         } \
     } while(0)
 
-wchar_t* convertToWideChar(const unsigned char* input);
-unsigned char* convertWideCharToUTF8(const wchar_t* wideStr);
-unsigned char* listDirectory(unsigned char* dirPathStr, size_t * dirPathStrLen);
+unsigned char* listDirectory(char* dirPathStr, size_t * dirPathStrLen);
 DWORD WINAPI downloadThread(LPVOID lpParam);
