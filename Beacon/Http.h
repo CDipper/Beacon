@@ -8,7 +8,7 @@
 #define MAX_HEADER_SIZE 1024
 
 unsigned char* parseGetResponse(unsigned char* data, size_t dataSize, size_t* responsedatalen);
-unsigned char* parsePacket(unsigned char* totalBuffer, uint32_t* totalLength, uint32_t* commandType, size_t* commandBuflen , size_t* count);
+unsigned char* parsePacket(unsigned char* totalBuffer, uint32_t* totalLength, uint32_t* command_type, size_t* command_length , size_t* count);
 unsigned char* GET(wchar_t* cookie_header, size_t* responseSize);
 unsigned char* makeBeaconIdHeader();
 unsigned char* makePostData(unsigned char* postMsg, size_t msgLen, int callback);

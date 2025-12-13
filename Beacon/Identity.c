@@ -37,21 +37,21 @@ unsigned char* CmdGetUid(size_t* msgLen) {
 }
 
 // 是对当前进程的环境变量
-unsigned char* CmdSetEnv(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLen) {
+unsigned char* CmdSetEnv(unsigned char* command, size_t command_length, size_t* msgLen) {
     // 返回 0 表示成功
-    if (putenv(commandBuf)) {
+    if (putenv(command)) {
         fprintf(stderr, "putenv failed\n");
         return NULL;
     }
 
     unsigned char* prefix = "[*] Env is ";
-    unsigned char* postMsg = malloc(strlen(prefix) + commandBuflen + 1);
+    unsigned char* postMsg = malloc(strlen(prefix) + command_length + 1);
     if (!postMsg) {
         fprintf(stderr, "Memory allocation failed\n");
         return NULL;
     }
-    snprintf(postMsg, strlen(prefix) + commandBuflen + 1, "%s%s", prefix, commandBuf);
-    *msgLen = strlen(prefix) + commandBuflen;
+    snprintf(postMsg, strlen(prefix) + command_length + 1, "%s%s", prefix, command);
+    *msgLen = strlen(prefix) + command_length;
     return postMsg;
 }
 

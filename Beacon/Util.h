@@ -31,5 +31,5 @@ BOOL SHA256_Hash(unsigned char* input, DWORD inputLength, unsigned char* output)
 
 
 #define HMAC_KEY_LENGTH 16 
-extern char hmackey[16];
+extern char g_hmackey[16];
 

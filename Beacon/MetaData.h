@@ -34,6 +34,8 @@ typedef struct {
 #define METADATA_FLAG_X64_SYSTEM 4
 #define METADATA_FLAG_ADMIN 8
 
+#define MAX_PACKET 0x80000
+
 MakeMetaInfoResult MakeMetaInfo();
 EncryptMetadataResult EncryMetadata();
 ULONG GetIP();

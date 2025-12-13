@@ -73,14 +73,5 @@ int PipeConnectWithTokenNoFlags(LPCSTR filename, HANDLE* pipe)
 	* 暂时不处理权限相关的
 	*/
 
-	//DWORD lastError = GetLastError();
-	//if (lastError == ERROR_ACCESS_DENIED)
-	//{
-	//	fprintf(stderr, "Could not do PipeConnect. Retrying with Revert/Impersonate\n");
-	//	IdentityRevertToken();
-	//	result = PipeConnect(filename, pipe, 0);
-	//	IdentityImpersonateToken();
-	//}
-
 	return result;
 }

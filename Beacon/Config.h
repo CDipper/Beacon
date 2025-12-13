@@ -7,30 +7,38 @@
 
 #pragma comment(lib, "winhttp.lib")
 
-const char* metadata_prepend;
-const char* metadata_header;
-extern const char Http_Post_uri[];
-const wchar_t* server;
-const wchar_t* get_path;
-const wchar_t* post_path;
-INTERNET_PORT port;
-const wchar_t* host_header;
-const wchar_t* user_agent_header;
-const wchar_t* server_header;
-const const wchar_t* content_type_header;
-const char* Http_post_id_prepend;
-const char* Http_post_id_append;
-const char* Http_post_client_output_prepend;
-const char* Http_post_client_output_append;
-extern char* pub_key_str;
-const char* Response_prepend;
-const char* Response_append;
-const char* header;
-const char netbiosKey;
-const char IV[];
-int SleepTime;
-int jitter;
-unsigned char aeskey[16];
-unsigned char hmackey[16];
-int Counter;
-int clientID;
+// HTTP configuration
+extern const wchar_t* g_server;
+extern const wchar_t* g_get_path;
+extern const wchar_t* g_post_path;
+extern INTERNET_PORT g_port;
+extern const wchar_t* g_host_header;
+extern const wchar_t* g_user_agent_header;
+extern const wchar_t* g_server_header;
+extern const wchar_t* g_content_type_header;
+
+// Metadata configuration
+extern const char* g_metadata_prepend;
+extern const char* g_metadata_header;
+extern const char* g_response_prepend;
+extern const char* g_response_append;
+
+// POST data configuration
+extern const char* g_http_post_id_prepend;
+extern const char* g_http_post_id_append;
+extern const char* g_http_post_client_output_prepend;
+extern const char* g_http_post_client_output_append;
+extern const char* g_post_header_name;
+
+// Encryption configuration
+extern char* g_public_key_str;
+extern const char g_netbios_key;
+extern const char g_iv[16];
+
+// Runtime configuration
+extern int g_sleeptime;
+extern int g_jitter;
+extern unsigned char g_aeskey[16];
+extern unsigned char g_hmackey[16];
+extern int g_counter;
+extern int g_client_id;

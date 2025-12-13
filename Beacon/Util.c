@@ -2,7 +2,7 @@
 #include "Config.h"
 #pragma warning(disable:4996)
 
-extern char hmackey[16];
+extern char g_hmackey[16];
 
 wchar_t* convertToWideChar(char* input) {
     if (input == NULL) {
@@ -239,7 +239,7 @@ unsigned char* AesCBCEncrypt(unsigned char* rawData, unsigned char* key, size_t 
 
     // 初始化 IV
     char IVA[16];
-    memcpy(IVA, IV, 16);
+    memcpy(IVA, g_iv, 16);
 
     // 打开 AES 算法提供者
     status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0);
@@ -359,7 +359,7 @@ unsigned char* AesCBCDecrypt(unsigned char* encryptData, unsigned char* key, siz
 
     // 初始化 IV
     unsigned char IVA[16];
-    memcpy(IVA, IV, 16);
+    memcpy(IVA, g_iv, 16);
 
     // 打开 AES 算法提供者
     status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, NULL, 0);
@@ -481,7 +481,7 @@ unsigned char* HMkey(unsigned char* encryptedBytes, size_t encryptedBytesLen) {
     }
 
     // 创建 HMAC 哈希对象
-    status = BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, (PUCHAR)hmackey, HMAC_KEY_LENGTH, 0);
+    status = BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, (PUCHAR)g_hmackey, HMAC_KEY_LENGTH, 0);
     if (!BCRYPT_SUCCESS(status)) {
         fprintf(stderr, "BCryptCreateHash failed: %08x\n", status);
         free(pbHashObject);
