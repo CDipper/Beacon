@@ -1,5 +1,6 @@
 #pragma once
 // callbackType
+#define CALLBACK_NULL               -1
 #define	CALLBACK_OUTPUT             0
 #define	CALLBACK_KEYSTROKES         1
 #define	CALLBACK_FILE               2

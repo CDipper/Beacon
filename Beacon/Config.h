@@ -42,3 +42,8 @@ extern unsigned char g_aeskey[16];
 extern unsigned char g_hmackey[16];
 extern int g_counter;
 extern int g_client_id;
+
+// other
+extern const char* g_end_string;
+
+

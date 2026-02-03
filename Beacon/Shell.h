@@ -4,13 +4,13 @@
 typedef struct {
     unsigned char* shellPath;
     unsigned char* shellBuf;
-} ParseCommandShellStruct;
+} CommandShell;
 
 struct ShellThreadArgs {
-    unsigned char* cmdBuffer;
-    size_t cmdBufferLength;
+    unsigned char* cmd_buffer;
+    size_t cmd_length;
 };
 
-ParseCommandShellStruct ParseCommandShell(unsigned char* cmdBuffer, int cmdBufferLength);
-DWORD WINAPI myThreadCmdRun(LPVOID lpParam);
-DWORD WINAPI myThreadCmdshell(LPVOID lpParam);
+CommandShell parse_command(unsigned char* cmdBuffer, int cmdBufferLength);
+DWORD WINAPI ThreadCmdRun(LPVOID lpParam);
+DWORD WINAPI ThreadCmdshell(LPVOID lpParam);

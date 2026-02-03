@@ -314,11 +314,13 @@ void BeaconPrintf(int type, char* fmt, ...) {
 	if (size > 0)
 	{
 		char* buffer = (char*)malloc(size + 1);
-		buffer[size] = '\0';
-		vsprintf_s(buffer, size + 1, fmt, ArgList);
-		DataProcess(buffer, size, 0);
-		memset(buffer, 0, size);
-		free(buffer);
+		if (buffer) {
+			buffer[size] = '\0';
+			vsprintf_s(buffer, size + 1, fmt, ArgList);
+			DataProcess(buffer, size, CALLBACK_OUTPUT);
+			memset(buffer, 0, size);
+			free(buffer);
+		}
 	}
 }
 

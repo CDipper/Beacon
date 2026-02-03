@@ -1,13 +1,7 @@
-# default sleep time is 60s
-set sleeptime "300";
-set jitter "7";
-
-# set tasks_max_size "4000000";
-
 # define indicators for an HTTP GET
 http-get {
 
-	set uri "/www/handle/doc";
+	set uri "/html/index.php";
 
 	client {
 		#header "Host" "aliyun.com";
@@ -43,7 +37,7 @@ http-get {
 # define indicators for an HTTP 
 http-post {
 	# Same as above, Beacon will randomly choose from this pool of URIs [if multiple URIs are provided]
-	set uri "/IMXo";
+	set uri "/api/update.php";
 	client {
 		#header "Content-Type" "application/octet-stream";				
         		

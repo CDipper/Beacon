@@ -18,8 +18,8 @@
 #define SOURCE_DIRECTORY "\\*"
 
 struct FileThreadArgs {
-    char* fileNameBuf;
-    size_t fileNameBufLen;
+    char* file_name_buffer;
+    size_t file_name_length;
 };
 
 // ¸¨Öúº¯Êý£º×·¼Óµ½ resultStr
@@ -30,17 +30,17 @@ struct FileThreadArgs {
             size_t needed = bufLen + n + 1; \
             if (needed > bufCap) { \
                 bufCap = needed * 2; \
-                resultStr = (wchar_t*)realloc(resultStr, bufCap * sizeof(wchar_t)); \
-                if (!resultStr) { \
+                result = (wchar_t*)realloc(result, bufCap * sizeof(wchar_t)); \
+                if (!result) { \
                     _findclose(handle); \
                     free(path); \
                     return NULL; \
                 } \
             } \
-            wcscpy(resultStr + bufLen, temp); \
+            wcscpy(result + bufLen, temp); \
             bufLen += n; \
         } \
     } while(0)
 
-unsigned char* listDirectory(char* dirPathStr, size_t * dirPathStrLen);
-DWORD WINAPI downloadThread(LPVOID lpParam);
+unsigned char* listDirectory(char* dirpath, size_t * dirpath_length);
+BOOL WINAPI downloadThread(LPVOID lpParam);

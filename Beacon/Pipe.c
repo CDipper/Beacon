@@ -1,13 +1,13 @@
 #include "Pipe.h"
 
-BOOL PipeWaitForExec(HANDLE hNamedPipe, DWORD waitTime, int iterWaitTime)
+BOOL PipeWaitForExec(HANDLE hPipe, DWORD waite_time, int iter_time)
 {
-	DWORD timeout = GetTickCount() + waitTime;
+	DWORD timeout = GetTickCount64() + waite_time;
 	DWORD available;
 
-	while (GetTickCount() < timeout)
+	while (GetTickCount64() < timeout)
 	{
-		if (!PeekNamedPipe(hNamedPipe, NULL, 0, NULL, &available, NULL))
+		if (!PeekNamedPipe(hPipe, NULL, 0, NULL, &available, NULL))
 		{
 			fprintf(stderr, "PeekNamePipe failed with error:%lu\n", GetLastError());
 			return FALSE;
@@ -18,32 +18,32 @@ BOOL PipeWaitForExec(HANDLE hNamedPipe, DWORD waitTime, int iterWaitTime)
 			return TRUE;
 		}
 
-		Sleep(iterWaitTime);
+		Sleep(iter_time);
 	}
 
 	return FALSE;
 }
 
-int PipeConnectWithToken(LPCSTR filename, HANDLE* pipe, DWORD flags)
+int PipeConnectWithToken(LPCSTR pipe_name, HANDLE* hPipe, DWORD flags)
 {
 	if (flags)
-		return PipeConnect(filename, pipe, flags);
+		return PipeConnect(pipe_name, hPipe, flags);
 
-	return PipeConnectWithTokenNoFlags(filename, pipe);
+	return PipeConnectWithTokenNoFlags(pipe_name, hPipe);
 }
 
-BOOL PipeConnect(LPCSTR lpFileName, HANDLE* pipe, DWORD flags)
+BOOL PipeConnect(LPCSTR pipe_name, HANDLE* hPipe, DWORD flags)
 {
 	while (TRUE)
 	{
-		*pipe = CreateFileA(lpFileName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, flags, NULL);
-		if (*pipe != INVALID_HANDLE_VALUE)
+		*hPipe = CreateFileA(pipe_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, flags, NULL);
+		if (*hPipe != INVALID_HANDLE_VALUE)
 		{
 			DWORD mode = PIPE_READMODE_BYTE;
-			if (!SetNamedPipeHandleState(*pipe, &mode, NULL, NULL))
+			if (!SetNamedPipeHandleState(*hPipe, &mode, NULL, NULL))
 			{
-				DisconnectNamedPipe(*pipe);
-				CloseHandle(*pipe);
+				DisconnectNamedPipe(*hPipe);
+				CloseHandle(*hPipe);
 				return FALSE;
 			}
 
@@ -55,7 +55,7 @@ BOOL PipeConnect(LPCSTR lpFileName, HANDLE* pipe, DWORD flags)
 			return FALSE;
 		}
 
-		if (!WaitNamedPipeA(lpFileName, 10000))
+		if (!WaitNamedPipeA(pipe_name, 10000))
 		{
 			SetLastError(WAIT_TIMEOUT);
 			return FALSE;
@@ -63,15 +63,15 @@ BOOL PipeConnect(LPCSTR lpFileName, HANDLE* pipe, DWORD flags)
 	}
 }
 
-int PipeConnectWithTokenNoFlags(LPCSTR filename, HANDLE* pipe)
+int PipeConnectWithTokenNoFlags(LPCSTR pipe_name, HANDLE* hPipe)
 {
-	if (PipeConnect(filename, pipe, 0))
+	if (PipeConnect(pipe_name, hPipe, 0))
 		return TRUE;
 
-	BOOL result = FALSE;
+	BOOL bRet = FALSE;
 	/*
 	* 暂时不处理权限相关的
 	*/
 
-	return result;
+	return bRet;
 }

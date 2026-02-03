@@ -27,18 +27,18 @@ typedef struct _JOB_ENTRY
 	char description[64];
 } JOB_ENTRY;
 
-// 先声明
+// 先声明一个全局变量 gJobs 用于保存所有的 Job 链表头
 extern JOB_ENTRY* gJobs;
 
 JOB_ENTRY* JobRegisterProcess(PROCESS_INFORMATION* pi, HANDLE hRead, HANDLE hWrite, unsigned char* description);
-JOB_ENTRY* JobAdd(JOB_ENTRY* newJob);
+JOB_ENTRY* JobAdd(JOB_ENTRY* new_job);
 void JobCleanup();
 JOB_ENTRY* JobRegisterProcess(PROCESS_INFORMATION* pi, HANDLE hRead, HANDLE hWrite, unsigned char* description);
-DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int size);
-DWORD JobReadDataFromPipeWithHeader(HANDLE hPipe, unsigned char* buffer, int size);
-int ProtocolSmbPipeRead(HANDLE channel, unsigned char* buffer, int length);
+DWORD JobReadDataFromPipe(HANDLE hPipe, unsigned char* buffer, int max);
+DWORD JobReadDataFromPipeWithHeader(HANDLE hPipe, unsigned char* buffer, int max);
+int ProtocolSmbPipeRead(HANDLE hPipe, unsigned char* buffer, int length);
 void ProcessJobEntry(int max);
-VOID JobSpawn(WORD callbackType, WORD waitTime, DWORD offset, unsigned char* patchCSharp, DWORD patchCSharpSize, unsigned char* argument, DWORD arguLength, unsigned char* description, DWORD descLength);
+BOOL JobSpawn(WORD callback_type, WORD wait_time, DWORD offset, unsigned char* patch_csharp, DWORD patch_csharp_size, unsigned char* argument, DWORD argu_length, unsigned char* description, DWORD desc_length);
 
 
 

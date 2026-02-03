@@ -2,10 +2,10 @@
 #include <windows.h>
 #include <stdio.h>
 
-BOOL PipeWaitForExec(HANDLE hNamedPipe, DWORD waitTime, int iterWaitTime);
-BOOL PipeConnect(LPCSTR lpFileName, HANDLE* pipe, DWORD flags);
-int PipeConnectWithTokenNoFlags(LPCSTR filename, HANDLE* pipe);
-int PipeConnectWithToken(LPCSTR filename, HANDLE* pipe, DWORD flags);
+BOOL PipeWaitForExec(HANDLE hPipe, DWORD waite_time, int iter_time);
+BOOL PipeConnect(LPCSTR pipe_name, HANDLE* hPipe, DWORD flags);
+int PipeConnectWithTokenNoFlags(LPCSTR pipe_name, HANDLE* hPipe);
+int PipeConnectWithToken(LPCSTR pipe_name, HANDLE* hPipe, DWORD flags);
 
 
 

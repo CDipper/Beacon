@@ -16,8 +16,8 @@ typedef struct {
 } MakeMetaInfoResult;
 
 typedef struct {
-    unsigned char* EncryptMetaData;
-    DWORD EncryptMetaDataLen;
+    unsigned char* EncryptMetadata;
+    DWORD EncryptMetadataLen;
 } EncryptMetadataResult;
 
 #define MAX_INFO 256
@@ -37,5 +37,5 @@ typedef struct {
 #define MAX_PACKET 0x80000
 
 MakeMetaInfoResult MakeMetaInfo();
-EncryptMetadataResult EncryMetadata();
+EncryptMetadataResult encryptMetadata();
 ULONG GetIP();

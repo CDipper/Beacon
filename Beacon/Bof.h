@@ -20,8 +20,8 @@ typedef struct _BEACON_RELOCATION {
 	unsigned long value;
 } BEACON_RELOCATION, * PBEACON_RELOCATION;
 
-void* FindOrAddDynamicFunction(Beacon_Internal_Api* api, void* newFunction);
-BOOL processRelocation(PBEACON_RELOCATION pImageRelocation, unsigned char* lpCodeStart, unsigned char* lpCodeStartAddress, unsigned char* lpSection, unsigned long offsetInSection);
+void* FindOrAddDynamicFunction(Beacon_Internal_Api* api, void* new_func);
+BOOL processRelocation(PBEACON_RELOCATION p_beacon_reloc, unsigned char* text, unsigned char* lpTextStartAddress, unsigned char* section, unsigned long offset);
 
 
 
