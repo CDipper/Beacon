@@ -155,17 +155,17 @@ char* BeaconDataStringPointer(datap* parser)
 	return BeaconDataPtr(parser, size);
 }
 
-char* BeaconDataStringPointerCopy(datap* parser, int size)
+char* BeaconDataStringPointerCopy(datap* parser, int max)
 {
-	char* buffer = (char*)malloc(size);
-	BeaconDataStringCopy(parser, buffer, size);
+	char* buffer = (char*)malloc(max);
+	BeaconDataStringCopy(parser, buffer, max);
 	return buffer;
 }
 
-int BeaconDataStringCopy(datap* parser, char* buffer, int size)
+int BeaconDataStringCopy(datap* parser, char* buffer, int max)
 {
 	int bufferSize = parser->length + 1;
-	if (bufferSize >= size)
+	if (bufferSize >= max)
 		return 0;
 
 	memcpy(buffer, parser->buffer, parser->length);
@@ -336,7 +336,7 @@ void BeaconErrorDD(int type, int d1, int d2) {
 	fprintf(stdout, "BeaconErrorDD Called\n");
 }
 
-void BeaconErrorNA(int type, int d1, int d2) {
+void BeaconErrorNA(int type) {
 	printf(stdout, "BeaconErrorNA Called\n");
 }
 
