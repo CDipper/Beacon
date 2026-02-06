@@ -317,7 +317,7 @@ void BeaconPrintf(int type, char* fmt, ...) {
 		if (buffer) {
 			buffer[size] = '\0';
 			vsprintf_s(buffer, size + 1, fmt, ArgList);
-			DataProcess(buffer, size, CALLBACK_OUTPUT);
+			DataProcess(buffer, size, type);
 			memset(buffer, 0, size);
 			free(buffer);
 		}
